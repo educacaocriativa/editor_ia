@@ -1,0 +1,33 @@
+# PDFs de referência — grandes demais para o git
+dados/materiais/
+
+# Cache de texto extraído dos PDFs (gerado pelo setup_dados.py)
+dados/cache/*.txt
+
+# Manter o índice JSON — necessário para o agente funcionar sem reprocessar
+!dados/cache/materiais_index.json
+
+# Chave da API e configuração pessoal
+dados/configuracao.json
+
+# Planilha BNCC — pode conter dados proprietários
+dados/bncc.xlsx
+dados/bncc.csv
+
+# Planilha Bloom — opcional, pode subir se quiser
+# dados/bloom_taxonomia.xlsx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# Arquivos temporários de saída
+*.docx
+!dados/

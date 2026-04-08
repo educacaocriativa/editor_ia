@@ -1,0 +1,20 @@
+ESTRUTURA DA PASTA DADOS
+========================
+
+bncc.xlsx (ou bncc.csv)
+  → Coloque aqui a planilha completa das habilidades BNCC.
+  → O sistema carrega automaticamente ao iniciar.
+  → Formatos aceitos: .xlsx, .xls, .csv
+
+materiais/
+  → Coloque aqui os PDFs que servirão como base de referência
+    (materiais aprovados, exemplos de escrita, guias editoriais).
+  → Organize em subpastas por componente/série se quiser (opcional).
+  → Após adicionar novos PDFs, execute:
+       python3 setup_dados.py
+     para processar e indexar os materiais.
+
+cache/
+  → Gerado automaticamente pelo sistema.
+  → Contém o texto extraído dos PDFs e o índice de busca.
+  → Não edite manualmente.
