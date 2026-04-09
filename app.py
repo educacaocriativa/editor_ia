@@ -544,17 +544,46 @@ with gr.Blocks(title="Editor IA") as demo:
                 "Administradores visualizam todos os usuários."
             )
 
+            # ── Filtros ──────────────────────────────────────────────────────
+            with gr.Row():
+                filtro_usuario = gr.Textbox(
+                    label="Filtrar por usuário",
+                    placeholder="Ex: ana",
+                    scale=1,
+                )
+                filtro_nome = gr.Textbox(
+                    label="Filtrar por documento",
+                    placeholder="Ex: Historia_3ano",
+                    scale=2,
+                )
+                filtro_data = gr.Textbox(
+                    label="Filtrar por data",
+                    placeholder="Ex: 2025-04 ou 2025-04-09",
+                    scale=1,
+                )
+                btn_filtrar = gr.Button("🔍 Filtrar", scale=0)
+                btn_refresh_hist = gr.Button("↻ Atualizar", scale=0)
+
             tabela_hist = gr.Dataframe(
                 headers=["ID", "Usuário", "Documento", "Data/Hora"],
                 interactive=False,
                 wrap=True,
             )
 
+            # ── Seleção e ações ──────────────────────────────────────────────
+            gr.Markdown("### 📥 Selecione o arquivo para baixar ou excluir")
+            hist_id_input = gr.Dropdown(
+                label="Arquivo",
+                choices=[],
+                allow_custom_value=False,
+                info=(
+                    "Clique em '↻ Atualizar' para carregar a lista,"
+                    " depois selecione o arquivo desejado."
+                ),
+            )
+
             with gr.Row():
-                hist_id_input = gr.Number(
-                    label="ID do arquivo", precision=0
-                )
-                btn_baixar_rev = gr.Button("⬇ Baixar Revisado")
+                btn_baixar_rev = gr.Button("⬇ Baixar Revisado", variant="primary")
                 btn_baixar_rel = gr.Button("⬇ Baixar Relatório")
                 btn_excluir_hist = gr.Button("🗑 Excluir", variant="stop")
 
@@ -565,23 +594,62 @@ with gr.Blocks(title="Editor IA") as demo:
                 label="Relatório", interactive=False
             )
             hist_msg = gr.Textbox(label="", interactive=False, lines=1)
-            btn_refresh_hist = gr.Button("↻ Atualizar lista")
+
+            # ── Helpers ──────────────────────────────────────────────────────
+
+            def _extrair_id(escolha: str):
+                """Extrai o ID numérico do início da string do dropdown."""
+                if not escolha:
+                    return None
+                try:
+                    return int(escolha.split(" — ")[0].strip())
+                except (ValueError, IndexError):
+                    return None
+
+            def _rows_para_choices(rows: list) -> list:
+                return [
+                    f"{r['id']} — {r['nome_original'] or 'sem nome'}"
+                    f"  ({r['usuario']}, {r['criado_em']})"
+                    for r in rows
+                ]
 
             def _listar_hist(request: gr.Request):
                 username = request.username if request else None
                 role = get_role(username) if username else ""
                 filtro = None if role == "admin" else username
                 rows = listar_arquivos(filtro)
-                return [
+                tabela = [
                     [r["id"], r["usuario"], r["nome_original"], r["criado_em"]]
                     for r in rows
                 ]
+                return tabela, gr.Dropdown(choices=_rows_para_choices(rows), value=None)
 
-            def _baixar_revisado(arquivo_id, request: gr.Request):
+            def _filtrar_hist(f_usuario, f_nome, f_data, request: gr.Request):
+                username = request.username if request else None
+                role = get_role(username) if username else ""
+                filtro = None if role == "admin" else username
+                rows = listar_arquivos(filtro)
+                if f_usuario.strip():
+                    rows = [r for r in rows
+                            if f_usuario.strip().lower() in r["usuario"].lower()]
+                if f_nome.strip():
+                    rows = [r for r in rows
+                            if f_nome.strip().lower()
+                            in (r["nome_original"] or "").lower()]
+                if f_data.strip():
+                    rows = [r for r in rows if f_data.strip() in r["criado_em"]]
+                tabela = [
+                    [r["id"], r["usuario"], r["nome_original"], r["criado_em"]]
+                    for r in rows
+                ]
+                return tabela, gr.Dropdown(choices=_rows_para_choices(rows), value=None)
+
+            def _baixar_revisado(escolha, request: gr.Request):
                 from arquivo_db import get_arquivo
-                reg = get_arquivo(int(arquivo_id)) if arquivo_id else None
+                arquivo_id = _extrair_id(escolha)
+                reg = get_arquivo(arquivo_id) if arquivo_id else None
                 if not reg:
-                    return None, "ID não encontrado."
+                    return None, "⚠ Selecione um arquivo na lista."
                 username = request.username if request else ""
                 role = get_role(username)
                 if role != "admin" and reg["usuario"] != username:
@@ -589,11 +657,12 @@ with gr.Blocks(title="Editor IA") as demo:
                 p = reg["path_revisado"]
                 return (p if p else None), ""
 
-            def _baixar_relatorio(arquivo_id, request: gr.Request):
+            def _baixar_relatorio(escolha, request: gr.Request):
                 from arquivo_db import get_arquivo
-                reg = get_arquivo(int(arquivo_id)) if arquivo_id else None
+                arquivo_id = _extrair_id(escolha)
+                reg = get_arquivo(arquivo_id) if arquivo_id else None
                 if not reg:
-                    return None, "ID não encontrado."
+                    return None, "⚠ Selecione um arquivo na lista."
                 username = request.username if request else ""
                 role = get_role(username)
                 if role != "admin" and reg["usuario"] != username:
@@ -601,16 +670,27 @@ with gr.Blocks(title="Editor IA") as demo:
                 p = reg["path_relatorio"]
                 return (p if p else None), ""
 
-            def _excluir_hist(arquivo_id, request: gr.Request):
+            def _excluir_hist(escolha, request: gr.Request):
                 username = request.username if request else ""
                 role = get_role(username)
                 if role != "admin":
-                    return "🔒 Apenas admins podem excluir.", _listar_hist(request)
-                ok, msg = excluir_arquivo(int(arquivo_id))
-                return msg, _listar_hist(request)
+                    return "🔒 Apenas admins podem excluir.", [], gr.Dropdown(choices=[])
+                arquivo_id = _extrair_id(escolha)
+                if not arquivo_id:
+                    return "⚠ Selecione um arquivo na lista.", [], gr.Dropdown(choices=[])
+                ok, msg = excluir_arquivo(arquivo_id)
+                tabela, dropdown = _listar_hist(request)
+                return msg, tabela, dropdown
 
             btn_refresh_hist.click(
-                fn=_listar_hist, inputs=[], outputs=[tabela_hist]
+                fn=_listar_hist,
+                inputs=[],
+                outputs=[tabela_hist, hist_id_input],
+            )
+            btn_filtrar.click(
+                fn=_filtrar_hist,
+                inputs=[filtro_usuario, filtro_nome, filtro_data],
+                outputs=[tabela_hist, hist_id_input],
             )
             btn_baixar_rev.click(
                 fn=_baixar_revisado,
@@ -625,7 +705,7 @@ with gr.Blocks(title="Editor IA") as demo:
             btn_excluir_hist.click(
                 fn=_excluir_hist,
                 inputs=[hist_id_input],
-                outputs=[hist_msg, tabela_hist],
+                outputs=[hist_msg, tabela_hist, hist_id_input],
             )
 
         # ── Aba Admin ────────────────────────────────────────────────────────
