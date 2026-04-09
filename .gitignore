@@ -31,3 +31,8 @@ venv/
 # Arquivos temporários de saída
 *.docx
 !dados/
+
+# Banco de dados e usuários locais (gerados em runtime)
+dados/usuarios.json
+dados/historico.db
+dados/arquivos/

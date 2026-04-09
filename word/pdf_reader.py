@@ -1,7 +1,7 @@
 """
 Extração de texto de arquivos PDF.
-Tenta pypdf primeiro (já instalado); usa pdfplumber se disponível
-para maior qualidade.
+Tenta pdfplumber/pypdf primeiro (PDFs digitais).
+Se não houver texto, usa OCR via pytesseract (PDFs escaneados).
 """
 from pathlib import Path
 from typing import Optional
@@ -16,7 +16,7 @@ def extrair_texto_pdf(caminho: str) -> str:
     if not path.exists() or path.suffix.lower() != ".pdf":
         return ""
 
-    # Tenta pdfplumber (melhor qualidade de extração)
+    # Tenta pdfplumber (melhor qualidade de extração — PDFs digitais)
     try:
         import pdfplumber
         partes = []
@@ -42,13 +42,36 @@ def extrair_texto_pdf(caminho: str) -> str:
                 texto = pagina.extract_text()
                 if texto:
                     partes.append(texto)
-        return "\n\n".join(partes)
+        if partes:
+            return "\n\n".join(partes)
     except ImportError:
         pass
     except Exception:
         pass
 
-    return ""
+    # Fallback OCR: para PDFs escaneados (imagens)
+    return _extrair_texto_ocr(caminho)
+
+
+def _extrair_texto_ocr(caminho: str) -> str:
+    """Converte páginas do PDF em imagens e aplica OCR (português)."""
+    try:
+        from pdf2image import convert_from_path
+        import pytesseract
+    except ImportError:
+        return ""
+
+    try:
+        # Limita a 30 páginas por PDF para não travar a VM
+        imagens = convert_from_path(caminho, dpi=200, last_page=30)
+        partes = []
+        for img in imagens:
+            texto = pytesseract.image_to_string(img, lang="por")
+            if texto.strip():
+                partes.append(texto)
+        return "\n\n".join(partes)
+    except Exception:
+        return ""
 
 
 def extrair_metadados_pdf(caminho: str) -> dict:

@@ -7,6 +7,11 @@ import traceback
 
 import gradio as gr
 
+from auth import (
+    verificar_login, get_role, criar_usuario, editar_usuario,
+    excluir_usuario, registrar_atividade, listar_usuarios,
+)
+from arquivo_db import registrar_arquivo, listar_arquivos, excluir_arquivo
 from agent.editor import revisar_documento
 from agent.profiles import PERFIS
 from word.extractor import extrair_texto_plano
@@ -58,6 +63,7 @@ def _revisar(
     fazer_bloom,
     fazer_cruzamento,
     api_key,
+    request: gr.Request = None,
     progress=gr.Progress(track_tqdm=True),
 ):
     if arquivo_principal is None:
@@ -103,6 +109,18 @@ def _revisar(
             fazer_cruzamento=fazer_cruzamento,
             progress_callback=cb,
         )
+
+        if request and request.username:
+            registrar_atividade(request.username)
+            nome_original = (
+                arquivo_principal.name if arquivo_principal else "documento"
+            )
+            registrar_arquivo(
+                usuario=request.username,
+                nome_original=nome_original,
+                path_revisado_tmp=resultado["docx_revisado"],
+                path_relatorio_tmp=resultado["docx_relatorio"],
+            )
 
         total = resultado["total_alteracoes"]
         linhas = [
@@ -517,11 +535,202 @@ with gr.Blocks(title="Editor IA") as demo:
                     outputs=[api_key_status],
                 )
 
-            # Carrega status ao iniciar
-            demo.load(
-                fn=_atualizar_status,
-                inputs=[],
-                outputs=[status_bncc_box, status_mat_box],
+
+        # ── Aba Histórico ─────────────────────────────────────────────────────
+        with gr.Tab("📁 Histórico"):
+
+            gr.Markdown(
+                "Arquivos gerados nas suas revisões. "
+                "Administradores visualizam todos os usuários."
+            )
+
+            tabela_hist = gr.Dataframe(
+                headers=["ID", "Usuário", "Documento", "Data/Hora"],
+                interactive=False,
+                wrap=True,
+            )
+
+            with gr.Row():
+                hist_id_input = gr.Number(
+                    label="ID do arquivo", precision=0
+                )
+                btn_baixar_rev = gr.Button("⬇ Baixar Revisado")
+                btn_baixar_rel = gr.Button("⬇ Baixar Relatório")
+                btn_excluir_hist = gr.Button("🗑 Excluir", variant="stop")
+
+            hist_download_rev = gr.File(
+                label="Documento Revisado", interactive=False
+            )
+            hist_download_rel = gr.File(
+                label="Relatório", interactive=False
+            )
+            hist_msg = gr.Textbox(label="", interactive=False, lines=1)
+            btn_refresh_hist = gr.Button("↻ Atualizar lista")
+
+            def _listar_hist(request: gr.Request):
+                username = request.username if request else None
+                role = get_role(username) if username else ""
+                filtro = None if role == "admin" else username
+                rows = listar_arquivos(filtro)
+                return [
+                    [r["id"], r["usuario"], r["nome_original"], r["criado_em"]]
+                    for r in rows
+                ]
+
+            def _baixar_revisado(arquivo_id, request: gr.Request):
+                from arquivo_db import get_arquivo
+                reg = get_arquivo(int(arquivo_id)) if arquivo_id else None
+                if not reg:
+                    return None, "ID não encontrado."
+                username = request.username if request else ""
+                role = get_role(username)
+                if role != "admin" and reg["usuario"] != username:
+                    return None, "🔒 Sem permissão."
+                p = reg["path_revisado"]
+                return (p if p else None), ""
+
+            def _baixar_relatorio(arquivo_id, request: gr.Request):
+                from arquivo_db import get_arquivo
+                reg = get_arquivo(int(arquivo_id)) if arquivo_id else None
+                if not reg:
+                    return None, "ID não encontrado."
+                username = request.username if request else ""
+                role = get_role(username)
+                if role != "admin" and reg["usuario"] != username:
+                    return None, "🔒 Sem permissão."
+                p = reg["path_relatorio"]
+                return (p if p else None), ""
+
+            def _excluir_hist(arquivo_id, request: gr.Request):
+                username = request.username if request else ""
+                role = get_role(username)
+                if role != "admin":
+                    return "🔒 Apenas admins podem excluir.", _listar_hist(request)
+                ok, msg = excluir_arquivo(int(arquivo_id))
+                return msg, _listar_hist(request)
+
+            btn_refresh_hist.click(
+                fn=_listar_hist, inputs=[], outputs=[tabela_hist]
+            )
+            btn_baixar_rev.click(
+                fn=_baixar_revisado,
+                inputs=[hist_id_input],
+                outputs=[hist_download_rev, hist_msg],
+            )
+            btn_baixar_rel.click(
+                fn=_baixar_relatorio,
+                inputs=[hist_id_input],
+                outputs=[hist_download_rel, hist_msg],
+            )
+            btn_excluir_hist.click(
+                fn=_excluir_hist,
+                inputs=[hist_id_input],
+                outputs=[hist_msg, tabela_hist],
+            )
+
+        # ── Aba Admin ────────────────────────────────────────────────────────
+        with gr.Tab("👑 Admin"):
+
+            gr.Markdown("### 👥 Usuários Cadastrados")
+            tabela_usuarios = gr.Dataframe(
+                headers=["Usuário", "Perfil", "Criado em",
+                         "Último acesso", "Revisões"],
+                interactive=False,
+                wrap=True,
+            )
+            btn_refresh_users = gr.Button("↻ Atualizar lista")
+
+            with gr.Row():
+                with gr.Group():
+                    gr.Markdown("#### ➕ Criar Usuário")
+                    novo_user = gr.Textbox(label="Usuário")
+                    nova_senha = gr.Textbox(label="Senha", type="password")
+                    novo_role = gr.Radio(
+                        choices=["user", "admin"],
+                        value="user",
+                        label="Perfil",
+                    )
+                    btn_criar = gr.Button("Criar", variant="primary")
+                    msg_criar = gr.Textbox(
+                        label="", interactive=False, lines=1
+                    )
+
+                with gr.Group():
+                    gr.Markdown("#### ✏️ Editar Usuário")
+                    edit_user = gr.Textbox(label="Usuário")
+                    edit_senha = gr.Textbox(
+                        label="Nova senha (deixe vazio para manter)",
+                        type="password",
+                    )
+                    edit_role = gr.Radio(
+                        choices=["user", "admin"],
+                        value="user",
+                        label="Novo perfil",
+                    )
+                    btn_editar = gr.Button("Salvar edição")
+                    msg_editar = gr.Textbox(
+                        label="", interactive=False, lines=1
+                    )
+
+                with gr.Group():
+                    gr.Markdown("#### 🗑️ Excluir Usuário")
+                    del_user = gr.Textbox(label="Usuário")
+                    btn_excluir = gr.Button("Excluir", variant="stop")
+                    msg_excluir = gr.Textbox(
+                        label="", interactive=False, lines=1
+                    )
+
+            def _criar(username, senha, role, request: gr.Request):
+                if get_role(request.username) != "admin":
+                    return "🔒 Acesso restrito.", []
+                ok, msg = criar_usuario(username, senha, role)
+                rows = [[u["Usuário"], u["Perfil"], u["Criado em"],
+                         u["Último acesso"], u["Revisões"]]
+                        for u in listar_usuarios()]
+                return msg, rows
+
+            def _editar(username, senha, role, request: gr.Request):
+                if get_role(request.username) != "admin":
+                    return "🔒 Acesso restrito.", []
+                ok, msg = editar_usuario(username, senha, role)
+                rows = [[u["Usuário"], u["Perfil"], u["Criado em"],
+                         u["Último acesso"], u["Revisões"]]
+                        for u in listar_usuarios()]
+                return msg, rows
+
+            def _excluir(username, request: gr.Request):
+                if get_role(request.username) != "admin":
+                    return "🔒 Acesso restrito.", []
+                ok, msg = excluir_usuario(username)
+                rows = [[u["Usuário"], u["Perfil"], u["Criado em"],
+                         u["Último acesso"], u["Revisões"]]
+                        for u in listar_usuarios()]
+                return msg, rows
+
+            def _refresh_users(request: gr.Request):
+                if get_role(request.username) != "admin":
+                    return []
+                return [[u["Usuário"], u["Perfil"], u["Criado em"],
+                         u["Último acesso"], u["Revisões"]]
+                        for u in listar_usuarios()]
+
+            btn_refresh_users.click(
+                fn=_refresh_users, inputs=[], outputs=[tabela_usuarios]
+            )
+            btn_criar.click(
+                fn=_criar,
+                inputs=[novo_user, nova_senha, novo_role],
+                outputs=[msg_criar, tabela_usuarios],
+            )
+            btn_editar.click(
+                fn=_editar,
+                inputs=[edit_user, edit_senha, edit_role],
+                outputs=[msg_editar, tabela_usuarios],
+            )
+            btn_excluir.click(
+                fn=_excluir,
+                inputs=[del_user],
+                outputs=[msg_excluir, tabela_usuarios],
             )
 
     gr.Markdown(
@@ -530,10 +739,15 @@ with gr.Blocks(title="Editor IA") as demo:
     )
 
 
+
 if __name__ == "__main__":
+    from pathlib import Path as _Path
     demo.launch(
-        server_name="127.0.0.1",
+        server_name="0.0.0.0",
         server_port=7860,
         share=False,
-        inbrowser=True,
+        inbrowser=False,
+        auth=verificar_login,
+        auth_message="Editor IA — Faça login para continuar.",
+        allowed_paths=[str(_Path(__file__).parent / "dados" / "arquivos")],
     )
