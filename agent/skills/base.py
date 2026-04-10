@@ -3,14 +3,31 @@ Classe base para todas as habilidades de revisão.
 """
 import json
 import re
+import threading
 import time
-from typing import List, Optional
+from typing import Callable
 import anthropic
 from config import MODEL
 
 # Retry em caso de rate limit (429) ou sobrecarga temporária (529)
 _MAX_TENTATIVAS = 6
 _ESPERA_PADRAO = 60  # segundos — usado quando a API não retorna retry-after
+
+# Callback de log por thread — definido pelo editor antes de cada revisão
+_thread_local = threading.local()
+
+
+def set_log_callback(fn: Callable[[str], None]) -> None:
+    """Registra log para a thread atual (uma revisão = uma thread)."""
+    _thread_local.log_fn = fn
+
+
+def _log_retry(msg: str) -> None:
+    """Envia mensagem ao frontend (se callback registrado) e ao terminal."""
+    fn = getattr(_thread_local, "log_fn", None)
+    if fn:
+        fn(msg)
+    print(msg)
 
 
 def _extrair_json_da_resposta(texto: str) -> list:
@@ -85,28 +102,30 @@ def _chamar_claude(
         except anthropic.RateLimitError as exc:
             if tentativa == _MAX_TENTATIVAS:
                 raise
-            # Respeita o header retry-after da API quando disponível
             espera = _ESPERA_PADRAO
             if hasattr(exc, "response") and exc.response is not None:
-                retry_after = exc.response.headers.get("retry-after")
-                if retry_after:
+                ra = exc.response.headers.get("retry-after")
+                if ra:
                     try:
-                        espera = int(float(retry_after)) + 2
+                        espera = int(float(ra)) + 2
                     except (ValueError, TypeError):
                         pass
-            print(
-                f"[rate limit] tentativa {tentativa}/{_MAX_TENTATIVAS}"
-                f" — aguardando {espera}s..."
+            _log_retry(
+                f"⏳ Limite de requisições atingido — aguardando "
+                f"{espera}s antes de continuar "
+                f"(tentativa {tentativa}/{_MAX_TENTATIVAS})..."
             )
             time.sleep(espera)
 
         except anthropic.APIStatusError as exc:
-            # 529 = API sobrecarregada; outros erros de servidor sobem imediatamente
-            if getattr(exc, "status_code", 0) == 529 and tentativa < _MAX_TENTATIVAS:
+            if (
+                getattr(exc, "status_code", 0) == 529
+                and tentativa < _MAX_TENTATIVAS
+            ):
                 espera = _ESPERA_PADRAO * tentativa
-                print(
-                    f"[overloaded 529] tentativa {tentativa}/{_MAX_TENTATIVAS}"
-                    f" — aguardando {espera}s..."
+                _log_retry(
+                    f"⏳ API sobrecarregada — aguardando {espera}s "
+                    f"(tentativa {tentativa}/{_MAX_TENTATIVAS})..."
                 )
                 time.sleep(espera)
             else:

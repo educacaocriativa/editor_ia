@@ -29,6 +29,7 @@ from agent.skills.bncc import validar_bncc_completo
 from agent.skills.bloom import avaliar_bloom, gerar_diagnostico_bloom
 from word.bloom_reader import montar_contexto_bloom
 from agent.skills.cruzamento import cruzar_informacoes
+from agent.skills.base import set_log_callback
 from report.generator import gerar_relatorio
 
 
@@ -59,6 +60,9 @@ def revisar_documento(
         if progress_callback:
             progress_callback(msg, pct)
         print(f"[{pct:.0%}] {msg}")
+
+    # Registra log para mensagens de retry visíveis no frontend
+    set_log_callback(lambda msg: progress_callback(msg, 0.0) if progress_callback else None)
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
