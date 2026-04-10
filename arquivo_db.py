@@ -10,6 +10,33 @@ from pathlib import Path
 DB_PATH = Path(__file__).parent / "dados" / "historico.db"
 PASTA_ARQUIVOS = Path(__file__).parent / "dados" / "arquivos"
 
+MESES_PT = {
+    1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL",
+    5: "MAIO", 6: "JUNHO", 7: "JULHO", 8: "AGOSTO",
+    9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO",
+}
+
+
+def _data_abreviada(dt: datetime = None) -> str:
+    """Retorna string no formato '10ABRIL'."""
+    dt = dt or datetime.now()
+    return f"{dt.day}{MESES_PT[dt.month]}"
+
+
+def _nome_unico(pasta: Path, nome: str) -> Path:
+    """Garante que não há colisão de nome na pasta — adiciona _2, _3 etc."""
+    dest = pasta / nome
+    if not dest.exists():
+        return dest
+    stem = Path(nome).stem
+    sufixo = Path(nome).suffix
+    contador = 2
+    while True:
+        dest = pasta / f"{stem}_{contador}{sufixo}"
+        if not dest.exists():
+            return dest
+        contador += 1
+
 
 def _conn():
     PASTA_ARQUIVOS.mkdir(parents=True, exist_ok=True)
@@ -23,14 +50,20 @@ def _criar_tabela():
     with _conn() as con:
         con.execute("""
             CREATE TABLE IF NOT EXISTS arquivos (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                usuario      TEXT NOT NULL,
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario       TEXT NOT NULL,
                 nome_original TEXT,
                 path_revisado TEXT,
                 path_relatorio TEXT,
-                criado_em    TEXT NOT NULL
+                criado_em     TEXT NOT NULL,
+                arquivado     INTEGER NOT NULL DEFAULT 0
             )
         """)
+        # Migração segura: adiciona coluna se tabela já existia sem ela
+        try:
+            con.execute("ALTER TABLE arquivos ADD COLUMN arquivado INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
 
 
 _criar_tabela()
@@ -43,26 +76,17 @@ def registrar_arquivo(
     path_relatorio_tmp: str,
 ) -> int:
     """
-    Copia os arquivos temporários para dados/arquivos/ e registra no banco.
+    Copia os arquivos temporários para dados/arquivos/ com nomenclatura:
+      NomeOriginal_REVISADO10ABRIL.docx
+      NomeOriginal_RELATÓRIO10ABRIL.docx
     Retorna o id do registro criado.
     """
     criado_em = datetime.now().strftime("%Y-%m-%d %H:%M")
+    data_abrev = _data_abreviada()
     base = Path(nome_original).stem if nome_original else "documento"
 
-    # Insere primeiro para obter o ID e usá-lo no nome do arquivo
-    with _conn() as con:
-        cur = con.execute(
-            """
-            INSERT INTO arquivos
-                (usuario, nome_original, path_revisado, path_relatorio, criado_em)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (usuario, base, "", "", criado_em),
-        )
-        arquivo_id = cur.lastrowid
-
-    dest_rev = PASTA_ARQUIVOS / f"{base}_EDITADO_{arquivo_id}.docx"
-    dest_rel = PASTA_ARQUIVOS / f"{base}_RELATORIO_{arquivo_id}.docx"
+    dest_rev = _nome_unico(PASTA_ARQUIVOS, f"{base}_REVISADO{data_abrev}.docx")
+    dest_rel = _nome_unico(PASTA_ARQUIVOS, f"{base}_RELATÓRIO{data_abrev}.docx")
 
     if path_revisado_tmp and Path(path_revisado_tmp).exists():
         shutil.copy2(path_revisado_tmp, dest_rev)
@@ -70,37 +94,44 @@ def registrar_arquivo(
         shutil.copy2(path_relatorio_tmp, dest_rel)
 
     with _conn() as con:
-        con.execute(
+        cur = con.execute(
             """
-            UPDATE arquivos
-               SET path_revisado = ?, path_relatorio = ?
-             WHERE id = ?
+            INSERT INTO arquivos
+                (usuario, nome_original, path_revisado, path_relatorio, criado_em, arquivado)
+            VALUES (?, ?, ?, ?, ?, 0)
             """,
             (
+                usuario,
+                base,
                 str(dest_rev) if dest_rev.exists() else "",
                 str(dest_rel) if dest_rel.exists() else "",
-                arquivo_id,
+                criado_em,
             ),
         )
-
-    return arquivo_id
+        return cur.lastrowid
 
 
 def listar_arquivos(usuario: str = None) -> list[dict]:
-    """
-    Retorna todos os arquivos. Se usuario informado, filtra por ele.
-    Admins passam usuario=None para ver todos.
-    """
+    """Retorna arquivos ativos (não arquivados)."""
     with _conn() as con:
         if usuario:
             rows = con.execute(
-                "SELECT * FROM arquivos WHERE usuario = ? ORDER BY id DESC",
+                "SELECT * FROM arquivos WHERE usuario = ? AND arquivado = 0 ORDER BY id DESC",
                 (usuario,),
             ).fetchall()
         else:
             rows = con.execute(
-                "SELECT * FROM arquivos ORDER BY id DESC"
+                "SELECT * FROM arquivos WHERE arquivado = 0 ORDER BY id DESC"
             ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def listar_arquivados() -> list[dict]:
+    """Retorna apenas arquivos arquivados (visível só para admins)."""
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT * FROM arquivos WHERE arquivado = 1 ORDER BY id DESC"
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -113,8 +144,32 @@ def get_arquivo(arquivo_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def arquivar_arquivo(arquivo_id: int) -> tuple[bool, str]:
+    """Marca o arquivo como arquivado (não remove do disco)."""
+    reg = get_arquivo(arquivo_id)
+    if not reg:
+        return False, "Registro não encontrado."
+    with _conn() as con:
+        con.execute(
+            "UPDATE arquivos SET arquivado = 1 WHERE id = ?", (arquivo_id,)
+        )
+    return True, f"✅ Arquivo arquivado."
+
+
+def restaurar_arquivo(arquivo_id: int) -> tuple[bool, str]:
+    """Restaura um arquivo arquivado de volta ao histórico ativo."""
+    reg = get_arquivo(arquivo_id)
+    if not reg:
+        return False, "Registro não encontrado."
+    with _conn() as con:
+        con.execute(
+            "UPDATE arquivos SET arquivado = 0 WHERE id = ?", (arquivo_id,)
+        )
+    return True, f"✅ Arquivo restaurado para o histórico."
+
+
 def excluir_arquivo(arquivo_id: int) -> tuple[bool, str]:
-    """Remove registro e arquivos do disco."""
+    """Remove permanentemente registro e arquivos do disco (apenas admin)."""
     reg = get_arquivo(arquivo_id)
     if not reg:
         return False, "Registro não encontrado."
@@ -124,4 +179,4 @@ def excluir_arquivo(arquivo_id: int) -> tuple[bool, str]:
             p.unlink()
     with _conn() as con:
         con.execute("DELETE FROM arquivos WHERE id = ?", (arquivo_id,))
-    return True, "Arquivo excluído."
+    return True, "🗑 Arquivo excluído permanentemente."

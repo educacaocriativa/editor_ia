@@ -11,7 +11,10 @@ from auth import (
     verificar_login, get_role, criar_usuario, editar_usuario,
     excluir_usuario, registrar_atividade, listar_usuarios,
 )
-from arquivo_db import registrar_arquivo, listar_arquivos, excluir_arquivo
+from arquivo_db import (
+    registrar_arquivo, listar_arquivos, listar_arquivados,
+    get_arquivo, arquivar_arquivo, restaurar_arquivo, excluir_arquivo,
+)
 from agent.editor import revisar_documento
 from agent.profiles import PERFIS
 from word.extractor import extrair_texto_plano
@@ -593,7 +596,7 @@ with gr.Blocks(title="Editor IA") as demo:
             )
 
             # ── Seleção e ações ──────────────────────────────────────────────
-            gr.Markdown("### 📥 Selecione o arquivo para baixar ou excluir")
+            gr.Markdown("### 📥 Selecione o arquivo para baixar ou arquivar")
             hist_id_input = gr.Dropdown(
                 label="Arquivo",
                 choices=[],
@@ -607,7 +610,7 @@ with gr.Blocks(title="Editor IA") as demo:
             with gr.Row():
                 btn_baixar_rev = gr.Button("⬇ Baixar Revisado", variant="primary")
                 btn_baixar_rel = gr.Button("⬇ Baixar Relatório")
-                btn_excluir_hist = gr.Button("🗑 Excluir", variant="stop")
+                btn_arquivar_hist = gr.Button("📦 Arquivar", variant="stop")
 
             hist_download_rev = gr.File(
                 label="Documento Revisado", interactive=False
@@ -617,10 +620,36 @@ with gr.Blocks(title="Editor IA") as demo:
             )
             hist_msg = gr.Textbox(label="", interactive=False, lines=1)
 
+            gr.Markdown("---")
+
+            # ── Seção Arquivados (apenas admin) ──────────────────────────────
+            gr.Markdown("### 📦 Documentos Arquivados _(somente admin)_")
+            gr.Markdown(
+                "Arquivos arquivados ficam guardados aqui e podem ser"
+                " restaurados ou excluídos permanentemente."
+            )
+            with gr.Row():
+                btn_refresh_arq = gr.Button("↻ Atualizar arquivados", scale=0)
+
+            tabela_arq = gr.Dataframe(
+                headers=["ID", "Usuário", "Documento", "Data/Hora"],
+                interactive=False,
+                wrap=True,
+            )
+            arq_id_input = gr.Dropdown(
+                label="Arquivo arquivado",
+                choices=[],
+                allow_custom_value=False,
+                info="Selecione um arquivo arquivado para restaurar ou excluir.",
+            )
+            with gr.Row():
+                btn_restaurar = gr.Button("♻ Restaurar", variant="primary")
+                btn_excluir_perm = gr.Button("🗑 Excluir permanentemente", variant="stop")
+            arq_msg = gr.Textbox(label="", interactive=False, lines=1)
+
             # ── Helpers ──────────────────────────────────────────────────────
 
             def _extrair_id(escolha: str):
-                """Extrai o ID numérico do início da string do dropdown."""
                 if not escolha:
                     return None
                 try:
@@ -667,7 +696,6 @@ with gr.Blocks(title="Editor IA") as demo:
                 return tabela, gr.Dropdown(choices=_rows_para_choices(rows), value=None)
 
             def _baixar_revisado(escolha, request: gr.Request):
-                from arquivo_db import get_arquivo
                 arquivo_id = _extrair_id(escolha)
                 reg = get_arquivo(arquivo_id) if arquivo_id else None
                 if not reg:
@@ -680,7 +708,6 @@ with gr.Blocks(title="Editor IA") as demo:
                 return (p if p else None), ""
 
             def _baixar_relatorio(escolha, request: gr.Request):
-                from arquivo_db import get_arquivo
                 arquivo_id = _extrair_id(escolha)
                 reg = get_arquivo(arquivo_id) if arquivo_id else None
                 if not reg:
@@ -692,16 +719,53 @@ with gr.Blocks(title="Editor IA") as demo:
                 p = reg["path_relatorio"]
                 return (p if p else None), ""
 
-            def _excluir_hist(escolha, request: gr.Request):
+            def _arquivar_hist(escolha, request: gr.Request):
                 username = request.username if request else ""
                 role = get_role(username)
-                if role != "admin":
-                    return "🔒 Apenas admins podem excluir.", [], gr.Dropdown(choices=[])
                 arquivo_id = _extrair_id(escolha)
                 if not arquivo_id:
                     return "⚠ Selecione um arquivo na lista.", [], gr.Dropdown(choices=[])
-                ok, msg = excluir_arquivo(arquivo_id)
+                reg = get_arquivo(arquivo_id)
+                if role != "admin" and (not reg or reg["usuario"] != username):
+                    return "🔒 Sem permissão.", [], gr.Dropdown(choices=[])
+                ok, msg = arquivar_arquivo(arquivo_id)
                 tabela, dropdown = _listar_hist(request)
+                return msg, tabela, dropdown
+
+            def _listar_arq(request: gr.Request):
+                username = request.username if request else None
+                role = get_role(username) if username else ""
+                if role != "admin":
+                    return [], gr.Dropdown(choices=[])
+                rows = listar_arquivados()
+                tabela = [
+                    [r["id"], r["usuario"], r["nome_original"], r["criado_em"]]
+                    for r in rows
+                ]
+                return tabela, gr.Dropdown(choices=_rows_para_choices(rows), value=None)
+
+            def _restaurar_arq(escolha, request: gr.Request):
+                username = request.username if request else ""
+                role = get_role(username)
+                if role != "admin":
+                    return "🔒 Apenas admins.", [], gr.Dropdown(choices=[])
+                arquivo_id = _extrair_id(escolha)
+                if not arquivo_id:
+                    return "⚠ Selecione um arquivo.", [], gr.Dropdown(choices=[])
+                ok, msg = restaurar_arquivo(arquivo_id)
+                tabela, dropdown = _listar_arq(request)
+                return msg, tabela, dropdown
+
+            def _excluir_perm(escolha, request: gr.Request):
+                username = request.username if request else ""
+                role = get_role(username)
+                if role != "admin":
+                    return "🔒 Apenas admins.", [], gr.Dropdown(choices=[])
+                arquivo_id = _extrair_id(escolha)
+                if not arquivo_id:
+                    return "⚠ Selecione um arquivo.", [], gr.Dropdown(choices=[])
+                ok, msg = excluir_arquivo(arquivo_id)
+                tabela, dropdown = _listar_arq(request)
                 return msg, tabela, dropdown
 
             btn_refresh_hist.click(
@@ -724,10 +788,25 @@ with gr.Blocks(title="Editor IA") as demo:
                 inputs=[hist_id_input],
                 outputs=[hist_download_rel, hist_msg],
             )
-            btn_excluir_hist.click(
-                fn=_excluir_hist,
+            btn_arquivar_hist.click(
+                fn=_arquivar_hist,
                 inputs=[hist_id_input],
                 outputs=[hist_msg, tabela_hist, hist_id_input],
+            )
+            btn_refresh_arq.click(
+                fn=_listar_arq,
+                inputs=[],
+                outputs=[tabela_arq, arq_id_input],
+            )
+            btn_restaurar.click(
+                fn=_restaurar_arq,
+                inputs=[arq_id_input],
+                outputs=[arq_msg, tabela_arq, arq_id_input],
+            )
+            btn_excluir_perm.click(
+                fn=_excluir_perm,
+                inputs=[arq_id_input],
+                outputs=[arq_msg, tabela_arq, arq_id_input],
             )
 
         # ── Aba Admin ────────────────────────────────────────────────────────
