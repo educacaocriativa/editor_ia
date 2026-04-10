@@ -105,7 +105,32 @@
 
 ---
 
-## 6. IDENTIDADE CONFESSIONAL — REDE LUZ DO MUNDO
+## 6. ACESSIBILIDADE E CONFISSÃO — NEURODIVERGÊNCIA E IDENTIDADE (Acessibilidade_e_Confissao)
+
+> Aplicar em **todo** material, independentemente de o público ser declaradamente neurodivergente.
+> Estas regras protegem crianças com TEA, TDAH e outras condições, além de preservar a identidade confessional evangélica da rede.
+
+| Categoria | EVITAR (Risco) | USAR (Padrão Ouro) |
+|---|---|---|
+| Linguagem Literal (TEA) | Metáforas e expressões idiomáticas ("Bate mais forte", "Choveu canivete", "Caiu a ficha") | Linguagem direta e acadêmica ("Aplique mais força", "Choveu muito", "Entendeu o conceito") |
+| Linguagem Literal (TEA) | Comandos subjetivos ("Use sua imaginação", "Faça como quiser") | Comandos objetivos e estruturados ("Desenhe um animal que você conhece", "Siga o passo a passo") |
+| Rótulos e Estigmas | Adjetivos pejorativos ou espiritualmente carregados ("Criança endiabrada", "Menino difícil") | Descrição de comportamento ou potencial ("Criança com muita energia", "Estudante em desenvolvimento") |
+| Identidade Religiosa | Santos católicos, hagiografia católica ou estímulos sincréticos (fitinhas do Bonfim, imagens de santos) | Personagens bíblicos, heróis da fé cristã evangélica ou elementos neutros da natureza |
+| Padronização Bíblica | Citações de versões variadas (Almeida, Ave Maria, NTLH) | Uso exclusivo da **Versão NVI** (Nova Versão Internacional) |
+| Carga Sensorial (TEA) | Instruções com excesso de estímulos visuais ou auditivos descritos de forma caótica | Instruções segmentadas, com apoio visual claro e listas numeradas |
+| Interação Social | Ironia ou sarcasmo em diálogos de personagens | Diálogos honestos, claros e exemplares |
+
+### Regras-síntese para o Editor IA:
+- **NUNCA** usar metáforas idiomáticas — substituir sempre por linguagem literal e direta.
+- **NUNCA** usar comandos vagos — toda instrução deve ser objetiva e estruturada em passos.
+- **NUNCA** usar rótulos negativos para crianças — descrever comportamento, não caráter.
+- **NUNCA** inserir elementos de outras religiões — apenas referências bíblicas evangélicas.
+- **SEMPRE** usar a versão **NVI** em citações bíblicas.
+- **SEMPRE** preferir listas numeradas a blocos de texto denso em enunciados de atividades.
+
+---
+
+## 7. IDENTIDADE CONFESSIONAL — REDE LUZ DO MUNDO
 
 - Preservar **sempre** termos teológicos: Deus, Criador, Cristão, cristão.
 - Não aplicar linguagem neutra de cunho ideológico.
