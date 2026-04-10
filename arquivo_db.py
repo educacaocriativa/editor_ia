@@ -47,17 +47,9 @@ def registrar_arquivo(
     Retorna o id do registro criado.
     """
     criado_em = datetime.now().strftime("%Y-%m-%d %H:%M")
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     base = Path(nome_original).stem if nome_original else "documento"
 
-    dest_rev = PASTA_ARQUIVOS / f"{ts}_{usuario}_revisado.docx"
-    dest_rel = PASTA_ARQUIVOS / f"{ts}_{usuario}_relatorio.docx"
-
-    if path_revisado_tmp and Path(path_revisado_tmp).exists():
-        shutil.copy2(path_revisado_tmp, dest_rev)
-    if path_relatorio_tmp and Path(path_relatorio_tmp).exists():
-        shutil.copy2(path_relatorio_tmp, dest_rel)
-
+    # Insere primeiro para obter o ID e usá-lo no nome do arquivo
     with _conn() as con:
         cur = con.execute(
             """
@@ -65,15 +57,33 @@ def registrar_arquivo(
                 (usuario, nome_original, path_revisado, path_relatorio, criado_em)
             VALUES (?, ?, ?, ?, ?)
             """,
+            (usuario, base, "", "", criado_em),
+        )
+        arquivo_id = cur.lastrowid
+
+    dest_rev = PASTA_ARQUIVOS / f"{base}_EDITADO_{arquivo_id}.docx"
+    dest_rel = PASTA_ARQUIVOS / f"{base}_RELATORIO_{arquivo_id}.docx"
+
+    if path_revisado_tmp and Path(path_revisado_tmp).exists():
+        shutil.copy2(path_revisado_tmp, dest_rev)
+    if path_relatorio_tmp and Path(path_relatorio_tmp).exists():
+        shutil.copy2(path_relatorio_tmp, dest_rel)
+
+    with _conn() as con:
+        con.execute(
+            """
+            UPDATE arquivos
+               SET path_revisado = ?, path_relatorio = ?
+             WHERE id = ?
+            """,
             (
-                usuario,
-                base,
                 str(dest_rev) if dest_rev.exists() else "",
                 str(dest_rel) if dest_rel.exists() else "",
-                criado_em,
+                arquivo_id,
             ),
         )
-        return cur.lastrowid
+
+    return arquivo_id
 
 
 def listar_arquivos(usuario: str = None) -> list[dict]:
