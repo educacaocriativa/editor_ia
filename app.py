@@ -254,6 +254,17 @@ def _salvar_api_key(chave: str):
 
 with gr.Blocks(title="Editor IA") as demo:
 
+    gr.HTML("""
+        <div style="display:flex; justify-content:flex-end; padding: 4px 8px;">
+            <a href="/logout"
+               style="background:#e53e3e; color:#fff; padding:6px 16px;
+                      border-radius:6px; text-decoration:none; font-size:0.875rem;
+                      font-weight:600; letter-spacing:0.02em;">
+                ⏻ Sair
+            </a>
+        </div>
+    """)
+
     gr.Markdown("# Editor IA", elem_id="titulo")
     gr.Markdown(
         "Revisão editorial inteligente de materiais didáticos —"
