@@ -3,9 +3,14 @@ Classe base para todas as habilidades de revisão.
 """
 import json
 import re
+import time
 from typing import List, Optional
 import anthropic
 from config import MODEL
+
+# Retry em caso de rate limit (429) ou sobrecarga temporária (529)
+_MAX_TENTATIVAS = 6
+_ESPERA_PADRAO = 60  # segundos — usado quando a API não retorna retry-after
 
 
 def _extrair_json_da_resposta(texto: str) -> list:
@@ -61,19 +66,51 @@ def _chamar_claude(
         }
     ]
 
-    msg = client.messages.create(
-        model=MODEL,
-        max_tokens=16000,
-        system=system_content,
-        messages=[{"role": "user", "content": user}],
-    )
-    # Filtra blocos de texto — ignora ThinkingBlock se presente
-    texto_blocos = [
-        bloco.text
-        for bloco in msg.content
-        if getattr(bloco, "type", "") == "text" and hasattr(bloco, "text")
-    ]
-    return "\n".join(texto_blocos)
+    for tentativa in range(1, _MAX_TENTATIVAS + 1):
+        try:
+            msg = client.messages.create(
+                model=MODEL,
+                max_tokens=16000,
+                system=system_content,
+                messages=[{"role": "user", "content": user}],
+            )
+            # Filtra blocos de texto — ignora ThinkingBlock se presente
+            texto_blocos = [
+                bloco.text
+                for bloco in msg.content
+                if getattr(bloco, "type", "") == "text" and hasattr(bloco, "text")
+            ]
+            return "\n".join(texto_blocos)
+
+        except anthropic.RateLimitError as exc:
+            if tentativa == _MAX_TENTATIVAS:
+                raise
+            # Respeita o header retry-after da API quando disponível
+            espera = _ESPERA_PADRAO
+            if hasattr(exc, "response") and exc.response is not None:
+                retry_after = exc.response.headers.get("retry-after")
+                if retry_after:
+                    try:
+                        espera = int(float(retry_after)) + 2
+                    except (ValueError, TypeError):
+                        pass
+            print(
+                f"[rate limit] tentativa {tentativa}/{_MAX_TENTATIVAS}"
+                f" — aguardando {espera}s..."
+            )
+            time.sleep(espera)
+
+        except anthropic.APIStatusError as exc:
+            # 529 = API sobrecarregada; outros erros de servidor sobem imediatamente
+            if getattr(exc, "status_code", 0) == 529 and tentativa < _MAX_TENTATIVAS:
+                espera = _ESPERA_PADRAO * tentativa
+                print(
+                    f"[overloaded 529] tentativa {tentativa}/{_MAX_TENTATIVAS}"
+                    f" — aguardando {espera}s..."
+                )
+                time.sleep(espera)
+            else:
+                raise
 
 
 SYSTEM_FORMATO_JSON = """
