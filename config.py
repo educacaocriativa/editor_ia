@@ -7,8 +7,8 @@ MODEL = "claude-opus-4-6"
 # Autor das revisões no controle de alterações do Word
 AUTOR_REVISAO = "Editor IA"
 
-# Número de verificações de fatos
-VERIFICACOES_FATOS = 5
+# Número de verificações de fatos (3 já garante maioria; 5 estoura rate limit)
+VERIFICACOES_FATOS = 3
 
 # Faixas etárias disponíveis
 FAIXAS_ETARIAS = [

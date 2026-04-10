@@ -3,8 +3,12 @@ Orquestrador principal do pipeline de revisão editorial.
 """
 import os
 import tempfile
+import time
 from typing import List, Callable, Optional
 from datetime import datetime
+
+# Pausa entre chamadas à API para evitar rate limit
+_PAUSA_ENTRE_SKILLS = 3  # segundos
 
 import anthropic
 import docx
@@ -147,6 +151,7 @@ def revisar_documento(
         except Exception as e:
             log(f"  ⚠ Erro: {e}", pct(1.0))
         etapa_atual += 1
+        time.sleep(_PAUSA_ENTRE_SKILLS)
 
     # ── Coesão e Estilo ──────────────────────────────────────────────────
     if fazer_coesao:
@@ -162,6 +167,7 @@ def revisar_documento(
         except Exception as e:
             log(f"  ⚠ Erro: {e}", pct(1.0))
         etapa_atual += 1
+        time.sleep(_PAUSA_ENTRE_SKILLS)
 
     # ── Revisão Pedagógica (com perfil específico) ──────────────────────
     if fazer_pedagogico:
@@ -191,6 +197,7 @@ def revisar_documento(
         except Exception as e:
             log(f"  ⚠ Erro: {e}", pct(1.0))
         etapa_atual += 1
+        time.sleep(_PAUSA_ENTRE_SKILLS)
 
     # ── Verificação de Fatos (5×) ────────────────────────────────────────
     if fazer_fatos:
@@ -219,6 +226,7 @@ def revisar_documento(
         except Exception as e:
             log(f"  ⚠ Erro: {e}", pct(1.0))
         etapa_atual += 1
+        time.sleep(_PAUSA_ENTRE_SKILLS)
 
     # ── Humanização (com perfil específico) ─────────────────────────────
     if fazer_humanizacao:
@@ -240,6 +248,7 @@ def revisar_documento(
         except Exception as e:
             log(f"  ⚠ Erro: {e}", pct(1.0))
         etapa_atual += 1
+        time.sleep(_PAUSA_ENTRE_SKILLS)
 
     # ── Validação BNCC ───────────────────────────────────────────────────
     if fazer_bncc:
@@ -279,7 +288,7 @@ def revisar_documento(
         except Exception as e:
             log(f"  ⚠ Erro: {e}", pct(1.0))
         etapa_atual += 1
-
+        time.sleep(_PAUSA_ENTRE_SKILLS)
 
     # ── Taxonomia de Bloom ──────────────────────────────────────────────
     if fazer_bloom:
@@ -320,6 +329,7 @@ def revisar_documento(
         except Exception as e:
             log(f"  ⚠ Erro: {e}", pct(1.0))
         etapa_atual += 1
+        time.sleep(_PAUSA_ENTRE_SKILLS)
 
     # ── Cruzamento de informações ────────────────────────────────────────
     if fazer_cruzamento:
