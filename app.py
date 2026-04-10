@@ -49,7 +49,7 @@ def _ler_plano(arquivo) -> str:
 
 
 def _revisar(
-    arquivo_principal,
+    arquivos,
     arquivo_plano,
     arquivo_bncc,
     perfil_nome,
@@ -66,8 +66,11 @@ def _revisar(
     request: gr.Request = None,
     progress=gr.Progress(track_tqdm=True),
 ):
-    if arquivo_principal is None:
-        return None, None, "⚠ Envie um arquivo .docx para revisar."
+    if arquivos is None or (isinstance(arquivos, list) and len(arquivos) == 0):
+        return None, None, "⚠ Envie ao menos um arquivo .docx para revisar."
+
+    if not isinstance(arquivos, list):
+        arquivos = [arquivos]
 
     if not api_key.strip() and not os.environ.get("ANTHROPIC_API_KEY"):
         return (
@@ -79,67 +82,74 @@ def _revisar(
     if api_key.strip():
         os.environ["ANTHROPIC_API_KEY"] = api_key.strip()
 
-    # Persiste a planilha BNCC se enviada nesta sessão
     if arquivo_bncc:
         salvar_caminho_bncc(arquivo_bncc.name)
 
-    log_msgs = []
+    plano_texto = _ler_plano(arquivo_plano)
+    caminho_bncc = arquivo_bncc.name if arquivo_bncc else ""
+    total_arquivos = len(arquivos)
+    ultimo_rev = None
+    ultimo_rel = None
+    log_global = []
 
-    def cb(msg: str, pct: float):
-        log_msgs.append(f"[{pct:.0%}] {msg}")
-        progress(pct, desc=msg)
+    for idx, arquivo in enumerate(arquivos, start=1):
+        from pathlib import Path as _P
+        nome = _P(arquivo.name).name
+        log_global.append(f"\n{'─' * 52}")
+        log_global.append(f"📄 [{idx}/{total_arquivos}]  {nome}")
+        log_global.append(f"{'─' * 52}")
+        log_msgs = []
 
-    try:
-        plano_texto = _ler_plano(arquivo_plano)
-        caminho_bncc = arquivo_bncc.name if arquivo_bncc else ""
+        def cb(msg: str, pct: float, _idx=idx, _total=total_arquivos):
+            log_msgs.append(f"  [{pct:.0%}] {msg}")
+            progress(pct, desc=f"[{_idx}/{_total}] {msg}")
 
-        resultado = revisar_documento(
-            caminho_docx=arquivo_principal.name,
-            faixa_etaria=perfil_nome,
-            plano_obras_texto=plano_texto,
-            caminho_planilha_bncc=caminho_bncc,
-            componente_curricular=componente_curricular,
-            fazer_ortografia=fazer_ortografia,
-            fazer_coesao=fazer_coesao,
-            fazer_pedagogico=fazer_pedagogico,
-            fazer_fatos=fazer_fatos,
-            fazer_humanizacao=fazer_humanizacao,
-            fazer_bncc=fazer_bncc,
-            fazer_bloom=fazer_bloom,
-            fazer_cruzamento=fazer_cruzamento,
-            progress_callback=cb,
-        )
-
-        if request and request.username:
-            registrar_atividade(request.username)
-            nome_original = (
-                arquivo_principal.name if arquivo_principal else "documento"
-            )
-            registrar_arquivo(
-                usuario=request.username,
-                nome_original=nome_original,
-                path_revisado_tmp=resultado["docx_revisado"],
-                path_relatorio_tmp=resultado["docx_relatorio"],
+        try:
+            resultado = revisar_documento(
+                caminho_docx=arquivo.name,
+                faixa_etaria=perfil_nome,
+                plano_obras_texto=plano_texto,
+                caminho_planilha_bncc=caminho_bncc,
+                componente_curricular=componente_curricular,
+                fazer_ortografia=fazer_ortografia,
+                fazer_coesao=fazer_coesao,
+                fazer_pedagogico=fazer_pedagogico,
+                fazer_fatos=fazer_fatos,
+                fazer_humanizacao=fazer_humanizacao,
+                fazer_bncc=fazer_bncc,
+                fazer_bloom=fazer_bloom,
+                fazer_cruzamento=fazer_cruzamento,
+                progress_callback=cb,
             )
 
-        total = resultado["total_alteracoes"]
-        linhas = [
-            f"✅ Revisão concluída — {total} alteração(ões) registrada(s).\n"
-        ]
-        for tipo, qtd in resultado["resumo"].items():
-            linhas.append(f"  • {tipo}: {qtd}")
+            if request and request.username:
+                registrar_atividade(request.username)
+                registrar_arquivo(
+                    usuario=request.username,
+                    nome_original=nome,
+                    path_revisado_tmp=resultado["docx_revisado"],
+                    path_relatorio_tmp=resultado["docx_relatorio"],
+                )
 
-        return (
-            resultado["docx_revisado"],
-            resultado["docx_relatorio"],
-            "\n".join(linhas + [""] + log_msgs),
-        )
+            ultimo_rev = resultado["docx_revisado"]
+            ultimo_rel = resultado["docx_relatorio"]
+            n_alt = resultado["total_alteracoes"]
+            log_global.append(f"✅ Concluído — {n_alt} alteração(ões)")
+            for tipo, qtd in resultado["resumo"].items():
+                log_global.append(f"   • {tipo}: {qtd}")
+            log_global.extend(log_msgs)
 
-    except Exception as exc:
-        return (
-            None, None,
-            f"❌ Erro:\n{exc}\n\n{traceback.format_exc()}",
-        )
+        except Exception as exc:
+            log_global.append(f"❌ Erro: {exc}\n{traceback.format_exc()}")
+
+    cabecalho = (
+        f"✅ {total_arquivos} arquivo(s) processado(s)."
+        + (" Último arquivo disponível para download abaixo."
+           if total_arquivos > 1 else "")
+        + ("\n📁 Todos os arquivos foram salvos no Histórico.\n"
+           if total_arquivos > 1 else "\n")
+    )
+    return ultimo_rev, ultimo_rel, cabecalho + "\n".join(log_global)
 
 
 # ── Configurações ────────────────────────────────────────────────────────────
@@ -282,8 +292,9 @@ with gr.Blocks(title="Editor IA") as demo:
                 with gr.Column(scale=1):
                     gr.Markdown("### 📄 Documentos")
                     arquivo_principal = gr.File(
-                        label="Arquivo .docx para revisão",
+                        label="Arquivos .docx para revisão (selecione um ou vários)",
                         file_types=[".docx"],
+                        file_count="multiple",
                     )
                     arquivo_plano = gr.File(
                         label=(
@@ -381,7 +392,7 @@ with gr.Blocks(title="Editor IA") as demo:
                     )
 
                     btn = gr.Button(
-                        "▶ Revisar Documento", variant="primary", size="lg"
+                        "▶ Revisar Documento(s)", variant="primary", size="lg"
                     )
 
                 # Saídas
@@ -389,13 +400,13 @@ with gr.Blocks(title="Editor IA") as demo:
                     gr.Markdown("### 📥 Resultados")
                     saida_docx = gr.File(
                         label=(
-                            "📝 Documento Revisado"
-                            " (com controle de alterações)"
+                            "📝 Último documento revisado"
+                            " (múltiplos arquivos: acesse o Histórico)"
                         ),
                         interactive=False,
                     )
                     saida_relatorio = gr.File(
-                        label="📊 Relatório de Revisão (.docx)",
+                        label="📊 Último relatório de revisão (.docx)",
                         interactive=False,
                     )
                     gr.Markdown("### 📋 Log de Progresso")
@@ -833,6 +844,7 @@ with gr.Blocks(title="Editor IA") as demo:
 
 if __name__ == "__main__":
     from pathlib import Path as _Path
+    demo.queue(max_size=20)
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
