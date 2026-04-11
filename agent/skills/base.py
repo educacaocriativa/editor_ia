@@ -87,7 +87,7 @@ def _chamar_claude(
         try:
             msg = client.messages.create(
                 model=MODEL,
-                max_tokens=8000,
+                max_tokens=10000,
                 system=system_content,
                 messages=[{"role": "user", "content": user}],
             )
