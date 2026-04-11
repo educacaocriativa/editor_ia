@@ -11,6 +11,7 @@ from .base import (
     SYSTEM_FORMATO_JSON,
 )
 from agent.profiles.base_perfil import PerfilEtario
+from agent.diretrizes import DIRETRIZES_COMPLETAS
 
 
 SYSTEM_PEDAGOGICO_BASE = (
@@ -28,10 +29,13 @@ SYSTEM_PEDAGOGICO_BASE = (
     "6. Exemplos, analogias e contextualizações adequadas\n"
     "7. Linguagem inclusiva e representativa\n\n"
     "NÃO revisar: ortografia, gramática formal, fatos científicos.\n\n"
+    + DIRETRIZES_COMPLETAS
+    + "\n\n"
     + SYSTEM_FORMATO_JSON
     + '\nCategorias válidas: "vocabulario", "complexidade",'
     ' "abordagem_didatica", "sequencia", "tom_registro",'
-    ' "exemplo_analogia", "inclusao", "scaffolding"'
+    ' "exemplo_analogia", "inclusao", "scaffolding",'
+    ' "confessional", "acessibilidade"'
 )
 
 

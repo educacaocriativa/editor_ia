@@ -15,6 +15,7 @@ from .base import (
     SYSTEM_FORMATO_JSON,
 )
 from agent.profiles.base_perfil import PerfilEtario
+from agent.diretrizes import DIRETRIZES_GERAIS, DIRETRIZES_HUMANIDADES_CRISTAS
 
 
 SYSTEM_CRUZAMENTO_BASE = (
@@ -47,6 +48,10 @@ SYSTEM_CRUZAMENTO_BASE = (
     "- Se não houver gabarito no texto, faça apenas a Verificação 1\n"
     "- Seja preciso: aponte apenas problemas reais, não subjetivos\n"
     "- Cite o trecho exato da atividade E o trecho do conteúdo relevante\n\n"
+    + DIRETRIZES_GERAIS
+    + "\n"
+    + DIRETRIZES_HUMANIDADES_CRISTAS
+    + "\n\n"
     + SYSTEM_FORMATO_JSON
     + '\nCategorias válidas para "tipo": "cruzamento_sem_base", '
     '"cruzamento_gabarito_incoerente", "cruzamento_gabarito_incompleto", '

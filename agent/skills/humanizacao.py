@@ -11,6 +11,7 @@ from .base import (
     SYSTEM_FORMATO_JSON,
 )
 from agent.profiles.base_perfil import PerfilEtario
+from agent.diretrizes import DIRETRIZES_GERAIS, DIRETRIZES_ACESSIBILIDADE
 
 
 SYSTEM_HUMANIZACAO_BASE = (
@@ -29,6 +30,10 @@ SYSTEM_HUMANIZACAO_BASE = (
     "- Conteúdo factual\n"
     "- Precisão conceitual\n"
     "- Adequação ao nível de ensino\n\n"
+    + DIRETRIZES_GERAIS
+    + "\n"
+    + DIRETRIZES_ACESSIBILIDADE
+    + "\n\n"
     + SYSTEM_FORMATO_JSON
     + '\nCategorias válidas para "tipo": "humanizacao"'
 )

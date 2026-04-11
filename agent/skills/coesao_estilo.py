@@ -4,9 +4,12 @@ Habilidade: Revisão de Coesão, Coerência e Estilo Linguístico.
 from typing import List
 import anthropic
 from .base import _chamar_claude, _extrair_json_da_resposta, SYSTEM_FORMATO_JSON
+from agent.diretrizes import DIRETRIZES_GERAIS
 
 
 SYSTEM_COESAO = f"""Você é um editor especialista em língua portuguesa (Brasil), com foco em coesão textual, coerência e estilo.
+
+{DIRETRIZES_GERAIS}
 
 ESCOPO DESTA REVISÃO:
 - Coesão: uso inadequado de conectivos, pronomes e referências

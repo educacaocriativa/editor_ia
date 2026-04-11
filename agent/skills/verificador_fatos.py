@@ -4,15 +4,23 @@ Habilidade: Verificação de Fatos (5 rodadas independentes).
 Cada afirmação factual é verificada 5 vezes de forma independente.
 Apenas afirmações com maioria de "incorretas" (3+/5) são sinalizadas.
 """
-import json
 from typing import List, Dict, Tuple
 import anthropic
 from .base import _chamar_claude, _extrair_json_da_resposta
+from agent.diretrizes import DIRETRIZES_HUMANIDADES_CRISTAS
 
 
-SYSTEM_EXTRAIR_FATOS = """Você é um especialista em verificação de fatos em materiais educacionais.
+SYSTEM_EXTRAIR_FATOS = (
+    "Você é um especialista em verificação de fatos em materiais educacionais.\n\n"
+    + DIRETRIZES_HUMANIDADES_CRISTAS
+    + """
 
 Sua tarefa é EXTRAIR afirmações factuais verificáveis do texto fornecido.
+
+ATENÇÃO: Afirmações sobre origem do universo ou da vida que já usam linguagem
+de cosmovisão cristã ("segundo a cosmovisão cristã...", "a Bíblia afirma...")
+NAO sao erros factuais - sao posicionamentos confessionais válidos. Extraia
+apenas fatos objetivamente verificáveis (datas, nomes, dados numéricos).
 
 Foco em:
 - Datas e períodos históricos
@@ -22,12 +30,13 @@ Foco em:
 - Afirmações geográficas
 - Eventos históricos
 
-NÃO incluir:
+NAO incluir:
 - Opiniões ou interpretações
 - Definições de conceitos genéricos
 - Instruções pedagógicas
+- Posicionamentos de cosmovisão cristã
 
-FORMATO DE SAÍDA — array JSON:
+FORMATO DE SAIDA -- array JSON:
 [
   {
     "afirmacao": "a afirmação factual exata como aparece no texto",
@@ -37,6 +46,7 @@ FORMATO DE SAÍDA — array JSON:
 
 Se não houver afirmações verificáveis, retorne: []
 """
+)
 
 SYSTEM_VERIFICAR_FATO = """Você é um verificador de fatos rigoroso e imparcial especializado em conteúdo educacional brasileiro.
 
@@ -54,7 +64,7 @@ REGRAS PARA texto_reescrito:
 - Reescreva a frase/trecho COMPLETO, não apenas o trecho errado
 - Incorpore a informação correta de forma natural, como se o texto sempre estivesse certo
 - Mantenha o tom, vocabulário e nível de linguagem do texto original
-- NÃO escreva frases como "Na verdade..." ou "O correto é..." — apenas reescreva
+- NAO escreva frases como "Na verdade..." ou "O correto é..." -- apenas reescreva
 - A reescrita deve ser pedagogicamente adequada ao nível do material
 
 Seja conservador: use "INCERTO" quando não tiver certeza absoluta.
@@ -114,7 +124,6 @@ def _verificar_com_maioria(
     corretos = [r for r in resultados if r.get("veredicto") == "CORRETO"]
 
     if len(incorretos) >= 3:
-        # Maioria diz incorreto — usa a reescrita com maior confiança
         melhor = max(incorretos, key=lambda r: r.get("confianca", 0))
         reescrito = melhor.get("texto_reescrito", "") or melhor.get("correcao", "")
         return "INCORRETO", reescrito, resultados
@@ -160,8 +169,6 @@ def verificar_fatos(
                 justificativas[0] if justificativas
                 else "Informação factualmente incorreta."
             )
-            # texto_original = contexto completo para localizar no doc
-            # texto_corrigido = reescrita pedagógica do mesmo trecho
             alteracoes.append({
                 "texto_original": contexto or afirmacao,
                 "texto_corrigido": reescrito,
@@ -172,12 +179,14 @@ def verificar_fatos(
                 ),
             })
         elif veredicto == "INCERTO":
-            # Sinaliza como incerto mas sem propor correção automática
             alteracoes.append({
                 "texto_original": afirmacao,
-                "texto_corrigido": afirmacao,  # sem alteração
+                "texto_corrigido": afirmacao,
                 "tipo": "factual_incerto",
-                "explicacao": f"Afirmação com credibilidade incerta após {n_verificacoes} verificações. Requer revisão humana.",
+                "explicacao": (
+                    f"Afirmação com credibilidade incerta após "
+                    f"{n_verificacoes} verificações. Requer revisão humana."
+                ),
             })
 
     return alteracoes

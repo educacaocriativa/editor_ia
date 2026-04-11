@@ -4,9 +4,12 @@ Habilidade: Revisão de Ortografia e Gramática.
 from typing import List
 import anthropic
 from .base import _chamar_claude, _extrair_json_da_resposta, SYSTEM_FORMATO_JSON
+from agent.diretrizes import DIRETRIZES_GERAIS
 
 
 SYSTEM_ORTOGRAFIA = f"""Você é um revisor especialista em língua portuguesa (Brasil), com foco em ortografia e gramática.
+
+{DIRETRIZES_GERAIS}
 
 ESCOPO DESTA REVISÃO:
 - Erros ortográficos (grafia, acentuação, hífen)
