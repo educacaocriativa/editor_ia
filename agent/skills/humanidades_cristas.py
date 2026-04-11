@@ -23,18 +23,18 @@ didáticos para a Rede Luz do Mundo (LDM), rede confessional evangélica brasile
 
 TAREFA: Identificar passagens que apresentam afirmações científicas naturalistas
 como verdades absolutas, sem o contraponto da cosmovisão cristã, e propor
-duas correções para cada passagem.
+duas correções complementares para cada passagem.
 
 TEMAS QUE EXIGEM CORREÇÃO:
-- Origem do ser humano / evolução (sem qualificador)
-- Surgimento do universo / Big Bang (sem qualificador)
+- Origem do ser humano / evolução apresentada como fato absoluto
+- Surgimento do universo / Big Bang apresentado como fato absoluto
 - Afirmações de que a religião é apenas construção social ou fenômeno cultural
 - Relativismo moral apresentado como verdade absoluta
 - Qualquer conteúdo que negue a existência ou ação de Deus como fato
 
 NÃO CORRIGIR:
-- Passagens que já usam qualificadores como "segundo a teoria evolutiva",
-  "cientistas propõem", "sob a perspectiva científica", "de acordo com..."
+- Passagens que já usam qualificadores ("segundo a teoria evolutiva",
+  "cientistas propõem", "sob a perspectiva científica", "de acordo com...")
 - Passagens que já incluem o contraponto cristão
 - Fatos históricos neutros, datas, eventos, dados geográficos
 
@@ -50,18 +50,33 @@ CORREÇÃO 1 — cosmovisao_qualificador:
     máximo 30 palavras)
   - texto_corrigido: mesmo trecho com o qualificador inserido
 
-CORREÇÃO 2 — cosmovisao_boxe:
-  Após o parágrafo corrigido, inserir um "Boxe Confissão de Fé" com o
-  contraponto evangélico.
-  Regras do boxe:
+CORREÇÃO 2 — cosmovisao_boxe (USE COM CRITÉRIO — MÁXIMO 3 POR ARQUIVO):
+  O Boxe Confissão de Fé é reservado para os momentos em que a cosmovisão
+  cristã precisa ser EXPLICITAMENTE esclarecida ao leitor — não deve ser
+  criado para cada qualificador, apenas quando o tema central do parágrafo
+  contradiz diretamente a fé evangélica (ex: origem da vida, criação do
+  universo, natureza do ser humano).
+
+  Regras OBRIGATÓRIAS do boxe:
     - Máximo 25 palavras
-    - Sempre começar com "Boxe Confissão de Fé: "
-    - Expressar a cosmovisão cristã evangélica com clareza e respeito
-    - Exemplo: "Boxe Confissão de Fé: Para a comunidade evangélica,
+    - Começar com "Boxe Confissão de Fé: "
+    - Expressar a posição evangélica com clareza e respeito
+    - PROIBIDO usar citações bíblicas (versículos, referências, textos
+      bíblicos) — o boxe deve ser uma afirmação de fé em linguagem própria
+    - PROIBIDO criar boxe para passagens onde um qualificador já é suficiente
+    - Exemplo correto: "Boxe Confissão de Fé: Para a comunidade evangélica,
       a criação do ser humano se deu, unicamente, pela vontade de Deus."
+    - Exemplo incorreto: incluir "Gênesis 1:1", "João 1:3" ou qualquer
+      referência bíblica no texto do boxe
+
   - texto_original: últimas 10-15 palavras EXATAS do parágrafo após o qual
-    o boxe deve ser inserido (para localizar o parágrafo no documento)
-  - texto_boxe: texto completo do boxe (máximo 25 palavras)
+    o boxe deve ser inserido
+  - texto_boxe: texto completo do boxe (máximo 25 palavras, sem citação bíblica)
+
+LIMITE GLOBAL: gere no máximo 3 itens do tipo cosmovisao_boxe por resposta.
+Priorize os temas de maior impacto na cosmovisão (origem humana, criação,
+natureza de Deus). Se houver mais de 3 passagens elegíveis para boxe,
+escolha as 3 mais relevantes e use apenas qualificador nas demais.
 
 FORMATO DE SAÍDA — array JSON:
 [
@@ -74,8 +89,8 @@ FORMATO DE SAÍDA — array JSON:
   {
     "tipo": "cosmovisao_boxe",
     "texto_original": "últimas 10-15 palavras exatas do parágrafo",
-    "texto_boxe": "Boxe Confissão de Fé: ... (máx 25 palavras)",
-    "explicacao": "qual contraponto cristão foi adicionado"
+    "texto_boxe": "Boxe Confissão de Fé: ... (máx 25 palavras, sem citação bíblica)",
+    "explicacao": "por que este parágrafo justifica um boxe e não apenas um qualificador"
   }
 ]
 

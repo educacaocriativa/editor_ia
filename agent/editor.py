@@ -369,8 +369,10 @@ def revisar_documento(
             )
             m = [x for x in m if isinstance(x, dict)]
             qualificadores = [x for x in m if x.get("tipo") == "cosmovisao_qualificador"]
-            boxes = [x for x in m if x.get("tipo") == "cosmovisao_boxe"]
-            todas_as_mudancas.extend(m)
+            # Limite rígido de 3 boxes por arquivo
+            boxes = [x for x in m if x.get("tipo") == "cosmovisao_boxe"][:3]
+            todas_as_mudancas.extend(qualificadores)
+            todas_as_mudancas.extend(boxes)
             etapas_concluidas.append({
                 "tipo": "cosmovisao",
                 "total": len(qualificadores),
