@@ -76,6 +76,7 @@ def _cor_hex(cor: RGBColor) -> str:
 NOMES_TIPO.update({
     "bloom_classificacao": "Bloom — Classificação das Atividades",
     "bloom_correcao": "Bloom — Correção de Atividade",
+    "bloom_gabarito": "Bloom — Atualização de Gabarito/Professor",
     "bloom_progressao": "Bloom — Progressão Cognitiva",
     "bncc_codigo_incorreto": "BNCC — Código Incorreto",
     "bncc_ano_incompativel": "BNCC — Ano Incompatível",
@@ -87,6 +88,7 @@ NOMES_TIPO.update({
 CORES_TIPO.update({
     "bloom_classificacao": RGBColor(0xE6, 0x7E, 0x22),   # laranja Bloom
     "bloom_correcao":      RGBColor(0xD3, 0x54, 0x00),   # laranja escuro
+    "bloom_gabarito":      RGBColor(0xA0, 0x40, 0x00),   # marrom-laranja
     "bloom_progressao":    RGBColor(0xCA, 0x6F, 0x1E),
     "bncc_codigo_incorreto": RGBColor(0x8E, 0x44, 0xAD),
     "bncc_ano_incompativel": RGBColor(0x76, 0x44, 0x8A),
@@ -279,6 +281,35 @@ def _gerar_secao_bloom(doc: Document, etapa_bloom: Dict) -> None:
 
                 doc.add_paragraph()
 
+        # ── Atualizações de gabarito / manual do professor ────────────────
+        gabarito_atualizacoes = etapa_bloom.get("_gabarito", []) or []
+        if gabarito_atualizacoes:
+            doc.add_heading(
+                "Gabarito / Manual do Professor — Atualizações",
+                level=2,
+            )
+            doc.add_paragraph(
+                "As seguintes passagens do gabarito ou orientações ao "
+                "professor foram atualizadas para refletir os novos "
+                "enunciados reformulados pela Taxonomia de Bloom:"
+            )
+            for gab in gabarito_atualizacoes:
+                p_orig = doc.add_paragraph()
+                p_orig.add_run("Original: ").bold = True
+                p_orig.add_run(gab.get("texto_original", ""))
+
+                p_new = doc.add_paragraph()
+                p_new.add_run("Atualizado: ").bold = True
+                r_new = p_new.add_run(gab.get("texto_corrigido", ""))
+                r_new.font.color.rgb = RGBColor(0xA0, 0x40, 0x00)
+
+                exp = gab.get("explicacao", "")
+                if exp:
+                    p_exp = doc.add_paragraph(f"Motivo: {exp}")
+                    p_exp.runs[0].font.color.rgb = RGBColor(0x7F, 0x8C, 0x8D)
+
+                doc.add_paragraph()
+
 
 def gerar_relatorio(
     caminho_saida: str,
@@ -353,11 +384,12 @@ def gerar_relatorio(
     # ── Listagem detalhada por tipo ──────────────────────────────────────────
     doc.add_heading("Detalhamento das Alterações", level=1)
 
-    # Agrupa por tipo (excluindo bloom_classificacao — já tem seção própria)
+    # Agrupa por tipo (excluindo tipos já com seção própria na seção Bloom)
+    _TIPOS_COM_SECAO_PROPRIA = {"bloom_classificacao", "bloom_correcao", "bloom_gabarito"}
     por_tipo: Dict[str, List[Dict]] = {}
     for m in todas_as_mudancas:
         t = m.get("tipo", "outros")
-        if t == "bloom_classificacao":
+        if t in _TIPOS_COM_SECAO_PROPRIA:
             continue  # já aparece na seção Bloom
         por_tipo.setdefault(t, []).append(m)
 

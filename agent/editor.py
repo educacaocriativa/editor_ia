@@ -30,7 +30,11 @@ from agent.skills.pedagogico import revisar_pedagogico
 from agent.skills.verificador_fatos import verificar_fatos
 from agent.skills.humanizacao import humanizar_texto
 from agent.skills.bncc import validar_bncc_completo
-from agent.skills.bloom import avaliar_bloom, gerar_diagnostico_bloom
+from agent.skills.bloom import (
+    avaliar_bloom,
+    gerar_diagnostico_bloom,
+    adaptar_gabarito_bloom,
+)
 from word.bloom_reader import montar_contexto_bloom
 from agent.skills.cruzamento import cruzar_informacoes
 from agent.skills.base import set_log_callback
@@ -312,16 +316,39 @@ def revisar_documento(
             ]
             todas_as_mudancas.extend(bloom_correcoes)
             diagnostico = gerar_diagnostico_bloom(bloom_itens)
+
+            # Adaptar gabarito / orientações do professor para as atividades
+            # que foram reformuladas pelo Bloom
+            bloom_gabarito = []
+            if bloom_correcoes:
+                try:
+                    log(
+                        "  → Atualizando gabarito para atividades reformuladas...",
+                        pct(0.5),
+                    )
+                    bloom_gabarito = adaptar_gabarito_bloom(
+                        client, bloom_correcoes, texto_numerado
+                    )
+                    bloom_gabarito = [
+                        x for x in bloom_gabarito if isinstance(x, dict)
+                    ]
+                    todas_as_mudancas.extend(bloom_gabarito)
+                except Exception as eg:
+                    log(f"  ⚠ Gabarito Bloom: {eg}", pct(0.5))
+
             etapas_concluidas.append({
                 "tipo": "bloom",
                 "total": len(bloom_correcoes),
+                "total_gabarito": len(bloom_gabarito),
                 "classificacoes": bloom_classificacoes,
                 "diagnostico": diagnostico,
                 "_todos_itens": bloom_itens,
+                "_gabarito": bloom_gabarito,
             })
             log(
                 f"  → {len(bloom_classificacoes)} atividades classificadas,"
-                f" {len(bloom_correcoes)} correções propostas.",
+                f" {len(bloom_correcoes)} correções propostas,"
+                f" {len(bloom_gabarito)} atualizações de gabarito.",
                 pct(1.0),
             )
             if diagnostico.get("julgamento"):

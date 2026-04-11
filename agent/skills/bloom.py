@@ -148,13 +148,21 @@ NORMA CULTA — REGRAS INVIOLÁVEIS:
   - Nível de linguagem compatível com a faixa etária
   - Nunca introduzir erros gramaticais na reescrita
 
+REGRA CRÍTICA PARA "texto_original":
+  - Copie APENAS A PRIMEIRA LINHA do enunciado da atividade — o comando
+    principal (até o primeiro ponto final, dois-pontos ou quebra de linha).
+  - Não inclua sub-itens (a), b), c), i., ii.) nem linhas seguintes.
+  - O trecho deve caber em um único parágrafo do Word (máximo ~30 palavras).
+  - Esta restrição é obrigatória: ela garante que a substituição seja aplicada
+    corretamente no documento Word.
+
 FORMATO DE SAÍDA — array JSON:
 [
   {
     "tipo": "bloom_correcao",
     "numero": "2",
-    "texto_original": "enunciado EXATO original (copie literalmente)",
-    "texto_corrigido": "nova atividade com **Verbo** em negrito",
+    "texto_original": "APENAS a linha de comando principal da atividade (ex: 'Complete as lacunas com as palavras do quadro.')",
+    "texto_corrigido": "nova linha de comando com **Verbo** em negrito (mesmo formato de parágrafo único)",
     "verbo_original": "Conhecimento",
     "verbo_novo": "Aplicação",
     "objetivos_novo": "uso de abstrações em situações concretas",
@@ -168,6 +176,46 @@ FORMATO DE SAÍDA — array JSON:
 
 Reescreva apenas o necessário — atividades já adequadas NÃO devem ser alteradas.
 Se todas estiverem adequadas, retorne [].
+"""
+
+
+SYSTEM_ADAPTAR_GABARITO = """\
+Você é um especialista em design instrucional e produção de materiais didáticos \
+para a educação básica brasileira.
+
+TAREFA: Atualizar o gabarito / orientações ao professor para refletir as \
+reformulações de atividades que já foram aplicadas no material.
+
+Você receberá:
+  1. Lista de atividades que foram REFORMULADAS (novo enunciado elevado em Bloom)
+  2. O texto completo do capítulo (que pode conter gabarito ou manual do professor)
+
+Para cada atividade reformulada:
+  - Localize o gabarito ou orientação correspondente no texto
+  - Verifique se a resposta/orientação ainda é coerente com o NOVO enunciado
+  - Se não for coerente (resposta errada, incompleta ou para pergunta diferente),
+    proponha a correção
+
+IMPORTANTE:
+  - Só proponha mudança se houver real inconsistência com o novo enunciado
+  - Mantenha o estilo do gabarito existente (ex: resposta objetiva, orientação
+    didática, sugestão de resposta)
+  - Se o gabarito estiver ausente ou já for adequado, não proponha nada
+  - "texto_original" deve ser o trecho EXATO do gabarito/orientação atual
+    (máximo ~30 palavras, parágrafo único)
+  - "texto_corrigido" deve ser a versão atualizada desse trecho
+
+FORMATO DE SAÍDA — array JSON:
+[
+  {
+    "tipo": "bloom_gabarito",
+    "texto_original": "trecho exato do gabarito/orientação atual",
+    "texto_corrigido": "versão atualizada coerente com o novo enunciado",
+    "explicacao": "por que o gabarito precisou ser atualizado"
+  }
+]
+
+Se não houver gabarito ou nenhuma atualização for necessária, retorne [].
 """
 
 
@@ -222,6 +270,44 @@ def avaliar_bloom(
         correcoes = [r for r in correcoes if isinstance(r, dict)]
 
     return classificacoes + correcoes
+
+
+def adaptar_gabarito_bloom(
+    client: anthropic.Anthropic,
+    correcoes: List[dict],
+    texto_numerado: str,
+) -> List[dict]:
+    """
+    FASE 3 (opcional): dado que atividades foram reformuladas pelo Bloom,
+    verifica se o gabarito / manual do professor precisa ser atualizado.
+    Retorna lista de itens bloom_gabarito (podem ser zero).
+    """
+    if not correcoes:
+        return []
+
+    resumo = json.dumps(
+        [
+            {
+                "numero": c.get("numero"),
+                "texto_original": c.get("texto_original"),
+                "texto_corrigido": c.get("texto_corrigido"),
+                "justificativa": c.get("justificativa"),
+            }
+            for c in correcoes
+        ],
+        ensure_ascii=False,
+        indent=2,
+    )
+    user = (
+        f"ATIVIDADES REFORMULADAS (Bloom):\n{resumo}\n\n"
+        f"TEXTO DO CAPÍTULO (inclui gabarito/manual do professor, se houver):\n"
+        f"{texto_numerado}"
+    )
+    resp = _chamar_claude(client, SYSTEM_ADAPTAR_GABARITO, user)
+    result = _extrair_json(resp)
+    if not isinstance(result, list):
+        return []
+    return [r for r in result if isinstance(r, dict)]
 
 
 def gerar_diagnostico_bloom(itens: List[dict]) -> Dict:
