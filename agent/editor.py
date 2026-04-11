@@ -37,6 +37,7 @@ from agent.skills.bloom import (
 )
 from word.bloom_reader import montar_contexto_bloom
 from agent.skills.cruzamento import cruzar_informacoes
+from agent.skills.humanidades_cristas import revisar_cosmovisao
 from agent.skills.base import set_log_callback
 from report.generator import gerar_relatorio
 
@@ -54,6 +55,7 @@ def revisar_documento(
     fazer_humanizacao: bool = True,
     fazer_bncc: bool = True,
     fazer_bloom: bool = True,
+    fazer_cosmovisao: bool = True,
     fazer_cruzamento: bool = True,
     progress_callback: Optional[Callable[[str, float], None]] = None,
 ) -> dict:
@@ -132,7 +134,7 @@ def revisar_documento(
     flags = [
         fazer_ortografia, fazer_coesao, fazer_pedagogico,
         fazer_fatos, fazer_humanizacao, fazer_bncc, fazer_bloom,
-        fazer_cruzamento,
+        fazer_cosmovisao, fazer_cruzamento,
     ]
     total_etapas = max(sum(flags), 1)
     etapa_atual = 0
@@ -353,6 +355,32 @@ def revisar_documento(
             )
             if diagnostico.get("julgamento"):
                 log(f"  → Diagnóstico: {diagnostico['julgamento']}", pct(1.0))
+        except Exception as e:
+            log(f"  ⚠ Erro: {e}", pct(1.0))
+        etapa_atual += 1
+        time.sleep(_PAUSA_ENTRE_SKILLS)
+
+    # ── Cosmovisão Cristã ────────────────────────────────────────────────
+    if fazer_cosmovisao:
+        log("Verificando cosmovisão cristã e contraponto evangélico...", pct(0.1))
+        try:
+            m = revisar_cosmovisao(
+                client, texto_numerado, faixa_etaria, perfil=perfil
+            )
+            m = [x for x in m if isinstance(x, dict)]
+            qualificadores = [x for x in m if x.get("tipo") == "cosmovisao_qualificador"]
+            boxes = [x for x in m if x.get("tipo") == "cosmovisao_boxe"]
+            todas_as_mudancas.extend(m)
+            etapas_concluidas.append({
+                "tipo": "cosmovisao",
+                "total": len(qualificadores),
+                "total_boxes": len(boxes),
+            })
+            log(
+                f"  → {len(qualificadores)} qualificadores,"
+                f" {len(boxes)} Boxes Confissão de Fé.",
+                pct(1.0),
+            )
         except Exception as e:
             log(f"  ⚠ Erro: {e}", pct(1.0))
         etapa_atual += 1

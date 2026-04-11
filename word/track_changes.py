@@ -191,6 +191,54 @@ def _aplicar_mudancas_no_paragrafo(
     return rev_id
 
 
+def _inserir_boxe_pos_paragrafo(
+    p_elem: etree._Element,
+    texto_boxe: str,
+    author: str,
+    date: str,
+    rev_id: int,
+) -> int:
+    """
+    Insere um novo parágrafo (Boxe Confissão de Fé) imediatamente após
+    p_elem, marcado como <w:ins> no controle de alterações do Word.
+    Retorna o próximo rev_id disponível.
+    """
+    novo_p = etree.Element(_w("p"))
+
+    # Marca o símbolo de parágrafo (¶) como inserido
+    pPr = etree.SubElement(novo_p, _w("pPr"))
+    rPr_pmark = etree.SubElement(pPr, _w("rPr"))
+    ins_pmark = etree.SubElement(rPr_pmark, _w("ins"))
+    ins_pmark.set(_w("id"), str(rev_id))
+    ins_pmark.set(_w("author"), author)
+    ins_pmark.set(_w("date"), date)
+    rev_id += 1
+
+    # Conteúdo do boxe como <w:ins>
+    ins_content = etree.SubElement(novo_p, _w("ins"))
+    ins_content.set(_w("id"), str(rev_id))
+    ins_content.set(_w("author"), author)
+    ins_content.set(_w("date"), date)
+    rev_id += 1
+
+    # Run com o texto — negrito para destacar o boxe
+    r = etree.SubElement(ins_content, _w("r"))
+    rPr = etree.SubElement(r, _w("rPr"))
+    etree.SubElement(rPr, _w("b"))
+    etree.SubElement(rPr, _w("bCs"))
+    t = etree.SubElement(r, _w("t"))
+    t.text = texto_boxe
+    t.set(f"{{{XML_NS}}}space", "preserve")
+
+    # Insere o novo parágrafo logo após p_elem no pai
+    pai = p_elem.getparent()
+    if pai is not None:
+        idx = list(pai).index(p_elem)
+        pai.insert(idx + 1, novo_p)
+
+    return rev_id
+
+
 def aplicar_todas_as_mudancas(
     doc: Document,
     mudancas: List[dict],
@@ -210,13 +258,23 @@ def aplicar_todas_as_mudancas(
         ...
     ]
     e aplica cada alteração como controle de alterações nativo do Word.
+
+    Tipo especial "cosmovisao_boxe": insere novo parágrafo após o parágrafo
+    que contém texto_original (usa texto_boxe em vez de texto_corrigido).
     """
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     rev_id = 1
 
+    # Separa boxes de cosmovisão das correções normais
+    boxes = [
+        m for m in mudancas
+        if m.get("tipo") == "cosmovisao_boxe" and m.get("texto_original") and m.get("texto_boxe")
+    ]
+    mudancas_normais = [m for m in mudancas if m.get("tipo") != "cosmovisao_boxe"]
+
     # Filtra apenas mudanças reais
     mudancas_validas = [
-        m for m in mudancas
+        m for m in mudancas_normais
         if m.get("texto_original") and m.get("texto_corrigido")
         and m["texto_original"] != m["texto_corrigido"]
     ]
@@ -245,3 +303,30 @@ def aplicar_todas_as_mudancas(
         for linha in tabela.rows:
             for celula in linha.cells:
                 _processar_paragrafos(celula.paragraphs)
+
+    # Inserção dos Boxes Confissão de Fé
+    if not boxes:
+        return
+
+    # Coleta todos os parágrafos do corpo (inclui tabelas via XML)
+    todos_p = list(doc.element.body.iter(_w("p")))
+    vistos_boxes: set = set()
+
+    for box in boxes:
+        ancora = box["texto_original"]
+        texto_boxe = box["texto_boxe"]
+
+        if ancora in vistos_boxes:
+            continue
+
+        # Procura o parágrafo que contém o texto-âncora
+        for p_elem in todos_p:
+            texto_p = "".join(
+                t.text or "" for t in p_elem.iter(_w("t"))
+            )
+            if ancora in texto_p:
+                rev_id = _inserir_boxe_pos_paragrafo(
+                    p_elem, texto_boxe, author, date_str, rev_id
+                )
+                vistos_boxes.add(ancora)
+                break

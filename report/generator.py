@@ -77,6 +77,8 @@ NOMES_TIPO.update({
     "bloom_classificacao": "Bloom — Classificação das Atividades",
     "bloom_correcao": "Bloom — Correção de Atividade",
     "bloom_gabarito": "Bloom — Atualização de Gabarito/Professor",
+    "cosmovisao_qualificador": "Cosmovisão — Qualificador Cristão",
+    "cosmovisao_boxe": "Cosmovisão — Boxe Confissão de Fé",
     "bloom_progressao": "Bloom — Progressão Cognitiva",
     "bncc_codigo_incorreto": "BNCC — Código Incorreto",
     "bncc_ano_incompativel": "BNCC — Ano Incompatível",
@@ -89,6 +91,8 @@ CORES_TIPO.update({
     "bloom_classificacao": RGBColor(0xE6, 0x7E, 0x22),   # laranja Bloom
     "bloom_correcao":      RGBColor(0xD3, 0x54, 0x00),   # laranja escuro
     "bloom_gabarito":      RGBColor(0xA0, 0x40, 0x00),   # marrom-laranja
+    "cosmovisao_qualificador": RGBColor(0x1A, 0x5E, 0x76),  # azul-petróleo
+    "cosmovisao_boxe":     RGBColor(0x0E, 0x3D, 0x52),   # azul escuro
     "bloom_progressao":    RGBColor(0xCA, 0x6F, 0x1E),
     "bncc_codigo_incorreto": RGBColor(0x8E, 0x44, 0xAD),
     "bncc_ano_incompativel": RGBColor(0x76, 0x44, 0x8A),
