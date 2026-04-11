@@ -105,7 +105,29 @@
 
 ---
 
-## 6. ACESSIBILIDADE E CONFISSÃO — NEURODIVERGÊNCIA E IDENTIDADE (Acessibilidade_e_Confissao)
+## 6. HUMANIDADES CRISTÃS — COSMOVISÃO E CONTEÚDO OBRIGATÓRIO (Humanidades_Cristas)
+
+> Conteúdos obrigatórios pela BNCC que contradizem a cosmovisão cristã **devem ser incluídos**, mas sempre apresentados como **visões ou modelos interpretativos**, nunca como verdades absolutas. A cosmovisão cristã deve ser reafirmada como contraponto legítimo.
+
+| Tema | Conteúdo BNCC | Abordagem Obrigatória | Expressões-chave | Evitar |
+|---|---|---|---|---|
+| Origem da Humanidade | Teoria da Evolução | Apresentar como modelo científico de interpretação biológica, contrapondo com a doutrina da Criação divina | "Segundo a teoria evolutiva...", "Sob a ótica científica naturalista...", "A cosmovisão cristã compreende que..." | Afirmar que o homem "veio do macaco" como fato absoluto e único |
+| Surgimento do Universo | Big Bang | Expor como tentativa de explicar a mecânica da criação, mantendo Deus como a Causa Primária | "Cientistas propõem que...", "Este modelo busca explicar...", "Cremos que a ordem do universo reflete a sabedoria do Criador." | Tratar o Big Bang como evento puramente aleatório e sem propósito |
+| Filosofia Iluminista | Antropocentrismo e Razão | Valorizar a razão como dom de Deus, apontando a falibilidade humana sem a direção divina | "Os filósofos iluministas defendiam...", "Embora a razão seja essencial, a fé oferece o sentido último..." | Validar "o homem é a medida de todas as coisas" sem ressalvas teológicas |
+| Sociologia e Religião | Religião como construção social | Apresentar Marx/Durkheim como análises sociológicas, reafirmando a fé como verdade espiritual | "Para este pensador, a religião era...", "Diferente desta visão sociológica, a experiência cristã baseia-se em..." | Tratar a fé apenas como fenômeno cultural ou ferramenta de controle social |
+| Ética e Moral | Relativismo moral | Expor diferentes culturas, fundamentando a ética nos valores absolutos da Bíblia | "Embora sociedades tenham normas diferentes, os princípios bíblicos nos chamam a...", "Valores como justiça e amor transcendem culturas..." | Afirmar que "não existe certo ou errado absoluto" |
+| Arte e Expressão | Arte como ruptura de valores | Celebrar a arte como reflexo da beleza de Deus (Beleza, Bondade e Verdade) | "A arte manifesta o dom criativo dado por Deus...", "Esta obra propõe uma crítica que podemos analisar à luz de..." | Promover obras que profanam símbolos cristãos sem análise crítica contextualizada |
+
+### Regras-síntese para o Editor IA:
+- **NUNCA** apresentar teorias científicas naturalistas como verdades absolutas — sempre como "modelos" ou "visões".
+- **SEMPRE** incluir o contraponto da cosmovisão cristã quando o conteúdo negar ou ignorar a existência de Deus.
+- **NUNCA** remover o conteúdo obrigatório da BNCC — apenas contextualizar com a perspectiva cristã.
+- **SEMPRE** usar expressões como "Segundo esta teoria...", "Sob esta perspectiva...", "A cosmovisão cristã, por sua vez, afirma que..." para sinalizar que não é verdade absoluta.
+- O objetivo não é negar a ciência, mas garantir que o estudante compreenda que existem **múltiplas perspectivas**, incluindo a cristã.
+
+---
+
+## 7. ACESSIBILIDADE E CONFISSÃO — NEURODIVERGÊNCIA E IDENTIDADE (Acessibilidade_e_Confissao)
 
 > Aplicar em **todo** material, independentemente de o público ser declaradamente neurodivergente.
 > Estas regras protegem crianças com TEA, TDAH e outras condições, além de preservar a identidade confessional evangélica da rede.
@@ -130,7 +152,7 @@
 
 ---
 
-## 7. IDENTIDADE CONFESSIONAL — REDE LUZ DO MUNDO
+## 8. IDENTIDADE CONFESSIONAL — REDE LUZ DO MUNDO
 
 - Preservar **sempre** termos teológicos: Deus, Criador, Cristão, cristão.
 - Não aplicar linguagem neutra de cunho ideológico.
