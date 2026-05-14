@@ -94,6 +94,13 @@ def _chamar_claude(
                 messages=[{"role": "user", "content": user}],
             ) as stream:
                 msg = stream.get_final_message()
+            # Avisa quando a resposta foi cortada por max_tokens — nesse caso
+            # o JSON volta truncado e o parser silenciosamente devolve []
+            if getattr(msg, "stop_reason", "") == "max_tokens":
+                _log_retry(
+                    f"⚠ Resposta da API atingiu max_tokens ({max_tokens}) — "
+                    f"saída truncada; o JSON pode estar incompleto."
+                )
             # Filtra blocos de texto — ignora ThinkingBlock se presente
             texto_blocos = [
                 bloco.text

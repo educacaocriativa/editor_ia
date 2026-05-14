@@ -360,6 +360,7 @@ def revisar_documento(
             etapas_concluidas.append({
                 "tipo": "bloom",
                 "total": len(bloom_correcoes),
+                "total_classificacoes": len(bloom_classificacoes),
                 "total_gabarito": len(bloom_gabarito),
                 "classificacoes": bloom_classificacoes,
                 "diagnostico": diagnostico,
@@ -454,11 +455,19 @@ def revisar_documento(
             m["texto_corrigido"] = _sanitizar_bold(m["texto_corrigido"])
 
     # ── Deduplica mudanças ───────────────────────────────────────────────
+    # Reescritas do Bloom (e atualizações de gabarito) usam chave própria
+    # para não serem descartadas quando uma skill anterior já propôs
+    # mudança no mesmo enunciado da atividade.
+    _TIPOS_BLOOM_PROTEGIDOS = {"bloom_correcao", "bloom_gabarito"}
     vistos: set = set()
     mudancas_unicas = []
     for m in todas_as_mudancas:
-        chave = m.get("texto_original", "")
-        if chave and chave not in vistos:
+        orig = m.get("texto_original", "")
+        if not orig:
+            continue
+        tipo = m.get("tipo", "")
+        chave = (orig, tipo) if tipo in _TIPOS_BLOOM_PROTEGIDOS else orig
+        if chave not in vistos:
             vistos.add(chave)
             mudancas_unicas.append(m)
 
@@ -535,9 +544,18 @@ def revisar_documento(
 
     log("Revisão concluída com sucesso!", 1.0)
 
+    def _resumo_etapa(e: dict) -> str:
+        if e["tipo"] == "bloom":
+            return (
+                f"{e.get('total_classificacoes', 0)} atividade(s) classificada(s), "
+                f"{e.get('total', 0)} correção(ões), "
+                f"{e.get('total_gabarito', 0)} gabarito(s)"
+            )
+        return str(e.get("total", 0))
+
     return {
         "docx_revisado": caminho_revisado,
         "docx_relatorio": caminho_relatorio,
         "total_alteracoes": len(mudancas_unicas),
-        "resumo": {e["tipo"]: e.get("total", 0) for e in etapas_concluidas},
+        "resumo": {e["tipo"]: _resumo_etapa(e) for e in etapas_concluidas},
     }
