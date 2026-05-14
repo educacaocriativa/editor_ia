@@ -83,9 +83,11 @@ def registrar_arquivo(
     """
     criado_em = datetime.now().strftime("%Y-%m-%d %H:%M")
     data_abrev = _data_abreviada()
-    base = Path(nome_original).stem if nome_original else "documento"
+    orig_path = Path(nome_original) if nome_original else Path("documento.docx")
+    base = orig_path.stem
+    rev_ext = orig_path.suffix.lower() if orig_path.suffix.lower() in (".pdf", ".docx") else ".docx"
 
-    dest_rev = _nome_unico(PASTA_ARQUIVOS, f"{base}_REVISADO{data_abrev}.docx")
+    dest_rev = _nome_unico(PASTA_ARQUIVOS, f"{base}_REVISADO{data_abrev}{rev_ext}")
     dest_rel = _nome_unico(PASTA_ARQUIVOS, f"{base}_RELATÓRIO{data_abrev}.docx")
 
     if path_revisado_tmp and Path(path_revisado_tmp).exists():

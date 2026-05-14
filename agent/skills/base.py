@@ -51,11 +51,12 @@ def _extrair_json_da_resposta(texto: str) -> list:
         except Exception:
             pass
 
-    # Procura qualquer bloco [ ... ] ou { ... }
-    match = re.search(r"(\[.*\]|\{.*\})", texto, re.DOTALL)
-    if match:
+    # find/rfind evita backtracking catastrofico em respostas longas
+    start = texto.find("[")
+    end = texto.rfind("]")
+    if start != -1 and end != -1 and end > start:
         try:
-            resultado = json.loads(match.group(1))
+            resultado = json.loads(texto[start:end + 1])
             if isinstance(resultado, dict) and "alteracoes" in resultado:
                 return resultado["alteracoes"]
             return resultado if isinstance(resultado, list) else []
@@ -70,6 +71,7 @@ def _chamar_claude(
     system: str,
     user: str,
     cache_system: bool = True,
+    max_tokens: int = 10000,
 ) -> str:
     """
     Chama o Claude com streaming e retorna o texto completo.
@@ -85,12 +87,13 @@ def _chamar_claude(
 
     for tentativa in range(1, _MAX_TENTATIVAS + 1):
         try:
-            msg = client.messages.create(
+            with client.messages.stream(
                 model=MODEL,
-                max_tokens=10000,
+                max_tokens=max_tokens,
                 system=system_content,
                 messages=[{"role": "user", "content": user}],
-            )
+            ) as stream:
+                msg = stream.get_final_message()
             # Filtra blocos de texto — ignora ThinkingBlock se presente
             texto_blocos = [
                 bloco.text

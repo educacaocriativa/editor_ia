@@ -39,7 +39,6 @@ from agent.skills.bloom import (
 from word.bloom_reader import montar_contexto_bloom
 from agent.skills.cruzamento import cruzar_informacoes
 from agent.skills.humanidades_cristas import revisar_cosmovisao
-from agent.skills.pensamento_computacional import revisar_pensamento_computacional
 from agent.skills.base import set_log_callback
 from report.generator import gerar_relatorio
 
@@ -59,7 +58,6 @@ def revisar_documento(
     fazer_bloom: bool = True,
     fazer_cosmovisao: bool = True,
     fazer_cruzamento: bool = True,
-    fazer_pc: bool = False,
     progress_callback: Optional[Callable[[str, float], None]] = None,
 ) -> dict:
     """
@@ -153,7 +151,7 @@ def revisar_documento(
     flags = [
         fazer_ortografia, fazer_coesao, fazer_pedagogico,
         fazer_fatos, fazer_humanizacao, fazer_bncc, fazer_bloom,
-        fazer_cosmovisao, fazer_cruzamento, fazer_pc,
+        fazer_cosmovisao, fazer_cruzamento,
     ]
     total_etapas = max(sum(flags), 1)
     etapa_atual = 0
@@ -423,35 +421,6 @@ def revisar_documento(
         except Exception as e:
             log(f"  ⚠ Erro: {e}", pct(1.0))
         etapa_atual += 1
-
-    # ── Pensamento Computacional ─────────────────────────────────────────
-    if fazer_pc:
-        log("Revisando Pensamento Computacional...", pct(0.1))
-        try:
-            m = revisar_pensamento_computacional(
-                client, texto_numerado, faixa_etaria, perfil=perfil
-            )
-            m = [x for x in m if isinstance(x, dict)]
-            todas_as_mudancas.extend(m)
-            etapas_concluidas.append(
-                {"tipo": "pensamento_computacional", "total": len(m)}
-            )
-            log(f"  → {len(m)} ajustes de Pensamento Computacional.", pct(1.0))
-        except Exception as e:
-            log(f"  ⚠ Erro: {e}", pct(1.0))
-        etapa_atual += 1
-        time.sleep(_PAUSA_ENTRE_SKILLS)
-
-    # ── Sanitiza bold indevido (ED_11): remove ** que envolvem frase inteira ─
-    def _sanitizar_bold(texto: str) -> str:
-        t = texto.strip()
-        if t.startswith("**") and t.endswith("**") and t.count("**") == 2:
-            return t[2:-2]
-        return texto
-
-    for m in todas_as_mudancas:
-        if "texto_corrigido" in m:
-            m["texto_corrigido"] = _sanitizar_bold(m["texto_corrigido"])
 
     # ── Deduplica mudanças ───────────────────────────────────────────────
     vistos: set = set()

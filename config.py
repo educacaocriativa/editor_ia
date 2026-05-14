@@ -2,7 +2,7 @@ import os
 
 # Anthropic
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-MODEL = "claude-opus-4-6"
+MODEL = "claude-opus-4-7"
 
 # Autor das revisões no controle de alterações do Word
 AUTOR_REVISAO = "Editor IA"

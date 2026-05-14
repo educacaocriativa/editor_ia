@@ -24,9 +24,9 @@ from word.configuracao import (
     salvar_caminho_materiais,
 )
 
-# Carrega a chave da API na inicialização, se estiver salva na config
+# Carrega a chave da API — configuracao.json tem prioridade sobre env herdado
 _cfg_init = carregar_config()
-if _cfg_init.get('anthropic_api_key') and not os.environ.get('ANTHROPIC_API_KEY'):
+if _cfg_init.get('anthropic_api_key'):
     os.environ['ANTHROPIC_API_KEY'] = _cfg_init['anthropic_api_key']
 from word.planilha_reader import carregar_planilha_bncc
 from word.materiais_referencia import recarregar_materiais
@@ -65,25 +65,24 @@ def _revisar(
     fazer_bncc,
     fazer_bloom,
     fazer_cruzamento,
-    api_key,
+    fazer_cosmovisao,
+    fazer_pc,
     request: gr.Request = None,
     progress=gr.Progress(track_tqdm=True),
 ):
+    import queue as _queue
+    import threading as _threading
+
     if arquivos is None or (isinstance(arquivos, list) and len(arquivos) == 0):
-        return None, None, "⚠ Envie ao menos um arquivo .docx para revisar."
+        yield None, None, "⚠ Envie ao menos um arquivo .docx para revisar.", "", ""
+        return
 
     if not isinstance(arquivos, list):
         arquivos = [arquivos]
 
-    if not api_key.strip() and not os.environ.get("ANTHROPIC_API_KEY"):
-        return (
-            None, None,
-            "⚠ Informe sua ANTHROPIC_API_KEY (ou configure via variável de"
-            " ambiente).",
-        )
-
-    if api_key.strip():
-        os.environ["ANTHROPIC_API_KEY"] = api_key.strip()
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        yield None, None, "⚠ ANTHROPIC_API_KEY não configurada no servidor.", "", ""
+        return
 
     if arquivo_bncc:
         salvar_caminho_bncc(arquivo_bncc.name)
@@ -103,28 +102,88 @@ def _revisar(
         log_global.append(f"{'─' * 52}")
         log_msgs = []
 
-        def cb(msg: str, pct: float, _idx=idx, _total=total_arquivos):
-            log_msgs.append(f"  [{pct:.0%}] {msg}")
-            progress(pct, desc=f"[{_idx}/{_total}] {msg}")
+        import time as _time
+        msg_queue = _queue.Queue()
+        done_event = _threading.Event()
+        result_container = {}
+        start_time = _time.time()
+        ultimo_pct = [0.0]
 
-        try:
-            resultado = revisar_documento(
-                caminho_docx=arquivo.name,
-                faixa_etaria=perfil_nome,
-                plano_obras_texto=plano_texto,
-                caminho_planilha_bncc=caminho_bncc,
-                componente_curricular=componente_curricular,
-                fazer_ortografia=fazer_ortografia,
-                fazer_coesao=fazer_coesao,
-                fazer_pedagogico=fazer_pedagogico,
-                fazer_fatos=fazer_fatos,
-                fazer_humanizacao=fazer_humanizacao,
-                fazer_bncc=fazer_bncc,
-                fazer_bloom=fazer_bloom,
-                fazer_cruzamento=fazer_cruzamento,
-                progress_callback=cb,
-            )
+        def cb(msg: str, pct: float, _idx=idx, _total=total_arquivos, _q=msg_queue):
+            _q.put((msg, pct))
+            ultimo_pct[0] = pct
+            try:
+                progress(pct, desc=f"[{_idx}/{_total}] {msg}")
+            except Exception:
+                pass
 
+        def _worker(_arq=arquivo, _cb=cb, _rc=result_container, _de=done_event):
+            try:
+                _rc["resultado"] = revisar_documento(
+                    caminho_docx=_arq.name,
+                    faixa_etaria=perfil_nome,
+                    plano_obras_texto=plano_texto,
+                    caminho_planilha_bncc=caminho_bncc,
+                    componente_curricular=componente_curricular,
+                    fazer_ortografia=fazer_ortografia,
+                    fazer_coesao=fazer_coesao,
+                    fazer_pedagogico=fazer_pedagogico,
+                    fazer_fatos=fazer_fatos,
+                    fazer_humanizacao=fazer_humanizacao,
+                    fazer_bncc=fazer_bncc,
+                    fazer_bloom=fazer_bloom,
+                    fazer_cruzamento=fazer_cruzamento,
+                    fazer_cosmovisao=fazer_cosmovisao,
+                    fazer_pc=fazer_pc,
+                    progress_callback=_cb,
+                )
+            except Exception as exc:
+                _rc["erro"] = f"{exc}\n{traceback.format_exc()}"
+            finally:
+                _de.set()
+
+        t = _threading.Thread(target=_worker, daemon=True)
+        t.start()
+
+        def _info_tempo() -> tuple:
+            pct = ultimo_pct[0]
+            elapsed = _time.time() - start_time
+            m_el, s_el = int(elapsed // 60), int(elapsed % 60)
+            if pct > 0.05:
+                restante = max(0, (elapsed / pct) - elapsed)
+                m_r, s_r = int(restante // 60), int(restante % 60)
+                status = f"⏳ Processando... {pct:.0%} concluído\n⏱ Decorrido: {m_el}min {s_el}s  |  Restante estimado: ~{m_r}min {s_r}s"
+            else:
+                status = f"⏳ Iniciando revisão...\n⏱ Decorrido: {m_el}min {s_el}s"
+            return status, status
+
+        # Transmite o log em tempo real — campos de arquivo não são tocados (gr.update)
+        while True:
+            try:
+                msg, pct = msg_queue.get(timeout=0.4)
+                log_msgs.append(f"  [{pct:.0%}] {msg}")
+            except _queue.Empty:
+                if done_event.is_set():
+                    while not msg_queue.empty():
+                        try:
+                            msg, pct = msg_queue.get_nowait()
+                            log_msgs.append(f"  [{pct:.0%}] {msg}")
+                        except _queue.Empty:
+                            break
+                    break
+            st_doc, st_rel = _info_tempo()
+            yield gr.update(), gr.update(), "\n".join(log_global + log_msgs), st_doc, st_rel
+
+        t.join()
+
+        elapsed_total = _time.time() - start_time
+        m_tot, s_tot = int(elapsed_total // 60), int(elapsed_total % 60)
+
+        if "erro" in result_container:
+            log_global.append(f"❌ Erro: {result_container['erro']}")
+            st_doc = st_rel = f"❌ Erro no processamento\n⏱ Tempo total: {m_tot}min {s_tot}s"
+        else:
+            resultado = result_container["resultado"]
             if request and request.username:
                 registrar_atividade(request.username)
                 registrar_arquivo(
@@ -133,17 +192,15 @@ def _revisar(
                     path_revisado_tmp=resultado["docx_revisado"],
                     path_relatorio_tmp=resultado["docx_relatorio"],
                 )
-
             ultimo_rev = resultado["docx_revisado"]
             ultimo_rel = resultado["docx_relatorio"]
             n_alt = resultado["total_alteracoes"]
             log_global.append(f"✅ Concluído — {n_alt} alteração(ões)")
             for tipo, qtd in resultado["resumo"].items():
                 log_global.append(f"   • {tipo}: {qtd}")
-            log_global.extend(log_msgs)
-
-        except Exception as exc:
-            log_global.append(f"❌ Erro: {exc}\n{traceback.format_exc()}")
+            st_doc = f"✅ Pronto — {n_alt} alteração(ões)\n⏱ Tempo total: {m_tot}min {s_tot}s"
+            st_rel = f"✅ Relatório gerado\n⏱ Tempo total: {m_tot}min {s_tot}s"
+        log_global.extend(log_msgs)
 
     cabecalho = (
         f"✅ {total_arquivos} arquivo(s) processado(s)."
@@ -152,7 +209,7 @@ def _revisar(
         + ("\n📁 Todos os arquivos foram salvos no Histórico.\n"
            if total_arquivos > 1 else "\n")
     )
-    return ultimo_rev, ultimo_rel, cabecalho + "\n".join(log_global)
+    yield ultimo_rev, ultimo_rel, cabecalho + "\n".join(log_global), st_doc, st_rel
 
 
 # ── Configurações ────────────────────────────────────────────────────────────
@@ -295,8 +352,8 @@ with gr.Blocks(title="Editor IA") as demo:
                 with gr.Column(scale=1):
                     gr.Markdown("### 📄 Documentos")
                     arquivo_principal = gr.File(
-                        label="Arquivos .docx para revisão (selecione um ou vários)",
-                        file_types=[".docx"],
+                        label="Arquivos .docx ou .pdf para revisão (selecione um ou vários)",
+                        file_types=[".docx", ".pdf"],
                         file_count="multiple",
                     )
                     arquivo_plano = gr.File(
@@ -332,6 +389,7 @@ with gr.Blocks(title="Editor IA") as demo:
                             "Inglês",
                             "Língua Portuguesa",
                             "Matemática",
+                            "Pensamento Computacional",
                             "Sociologia",
                         ],
                         value="",
@@ -383,33 +441,50 @@ with gr.Blocks(title="Editor IA") as demo:
                             " conteúdo, atividades e gabarito"
                         ),
                     )
-
-                    gr.Markdown("### 🔑 Chave de API")
-                    api_key = gr.Textbox(
-                        label="ANTHROPIC_API_KEY",
-                        placeholder=(
-                            "sk-ant-... (ou deixe vazio se já está"
-                            " no ambiente)"
+                    fazer_cosmovisao = gr.Checkbox(
+                        value=True,
+                        label=(
+                            "Cosmovisão Cristã —"
+                            " contraponto evangélico e identidade confessional"
                         ),
-                        type="password",
+                    )
+                    fazer_pc = gr.Checkbox(
+                        value=False,
+                        label=(
+                            "Pensamento Computacional —"
+                            " vocabulário técnico, clareza algorítmica e BNCC digital"
+                        ),
                     )
 
-                    btn = gr.Button(
-                        "▶ Revisar Documento(s)", variant="primary", size="lg"
-                    )
+                    with gr.Row():
+                        btn = gr.Button(
+                            "▶ Revisar Documento(s)", variant="primary", size="lg"
+                        )
+                        btn_cancelar = gr.Button(
+                            "⏹ Cancelar", variant="stop", size="lg"
+                        )
 
                 # Saídas
                 with gr.Column(scale=1):
                     gr.Markdown("### 📥 Resultados")
+                    status_docx = gr.Textbox(
+                        label="📝 Documento revisado",
+                        value="",
+                        interactive=False,
+                        elem_classes=["status-box"],
+                    )
                     saida_docx = gr.File(
-                        label=(
-                            "📝 Último documento revisado"
-                            " (múltiplos arquivos: acesse o Histórico)"
-                        ),
+                        label="⬇ Download — documento revisado",
                         interactive=False,
                     )
+                    status_relatorio = gr.Textbox(
+                        label="📊 Relatório de revisão",
+                        value="",
+                        interactive=False,
+                        elem_classes=["status-box"],
+                    )
                     saida_relatorio = gr.File(
-                        label="📊 Último relatório de revisão (.docx)",
+                        label="⬇ Download — relatório (.docx)",
                         interactive=False,
                     )
                     gr.Markdown("### 📋 Log de Progresso")
@@ -420,7 +495,7 @@ with gr.Blocks(title="Editor IA") as demo:
                         elem_classes=["status-box"],
                     )
 
-            btn.click(
+            click_event = btn.click(
                 fn=_revisar,
                 inputs=[
                     arquivo_principal,
@@ -436,10 +511,12 @@ with gr.Blocks(title="Editor IA") as demo:
                     fazer_bncc,
                     fazer_bloom,
                     fazer_cruzamento,
-                    api_key,
+                    fazer_cosmovisao,
+                    fazer_pc,
                 ],
-                outputs=[saida_docx, saida_relatorio, log_box],
+                outputs=[saida_docx, saida_relatorio, log_box, status_docx, status_relatorio],
             )
+            btn_cancelar.click(fn=None, cancels=[click_event])
 
         # ── Aba Configurações ────────────────────────────────────────────────
         with gr.Tab("⚙ Configurações"):

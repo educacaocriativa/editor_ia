@@ -46,12 +46,10 @@ def _extrair_json(texto: str):
             return json.loads(m.group(1).strip())
         except Exception:
             pass
-    # find/rfind evita backtracking catastrofico em respostas longas
-    start = texto.find("[")
-    end = texto.rfind("]")
-    if start != -1 and end != -1 and end > start:
+    m = re.search(r"(\[.*\])", texto, re.DOTALL)
+    if m:
         try:
-            return json.loads(texto[start:end + 1])
+            return json.loads(m.group(1))
         except Exception:
             pass
     return []
@@ -241,7 +239,7 @@ def avaliar_bloom(
         f"{bloco_perfil}\n\n"
         f"TEXTO DO CAPÍTULO:\n{texto_numerado}"
     )
-    resp1 = _chamar_claude(client, SYSTEM_FASE1, user_fase1, max_tokens=32000)
+    resp1 = _chamar_claude(client, SYSTEM_FASE1, user_fase1)
     classificacoes = _extrair_json(resp1)
     if not isinstance(classificacoes, list):
         classificacoes = []
@@ -265,7 +263,7 @@ def avaliar_bloom(
             f"CLASSIFICAÇÃO DAS ATIVIDADES (Fase 1):\n{resumo_fase1}\n\n"
             f"TEXTO ORIGINAL DO CAPÍTULO:\n{texto_numerado}"
         )
-        resp2 = _chamar_claude(client, SYSTEM_FASE2, user_fase2, max_tokens=32000)
+        resp2 = _chamar_claude(client, SYSTEM_FASE2, user_fase2)
         correcoes = _extrair_json(resp2)
         if not isinstance(correcoes, list):
             correcoes = []

@@ -32,6 +32,13 @@ PROIBIÇÕES ABSOLUTAS:
   → Citar o ano ou o século (em 2024, no século XXI)
 - Enunciados negativos (não faça, não responda)
   → Enunciados afirmativos (evite, mude, transforme)
+- A palavra "aluno" em qualquer contexto
+  → Substituir sempre por "estudante"
+- A palavra "discuta" em qualquer contexto
+  → Substituir conforme o contexto:
+     diálogo interpessoal → "dialogue"
+     análise ou aprofundamento → "elabore"
+     troca de ideias em grupo → "converse"
 
 REGRAS ESPECÍFICAS DO EDITOR:
 - ED_01: Títulos — maiúscula APENAS em início de frase ou nomes próprios
@@ -46,6 +53,34 @@ REGRAS ESPECÍFICAS DO EDITOR:
 - ED_08: Referências bibliográficas — proibido "de" antes do ano
   ❌ "Nome do Site, de 2025" → ✅ "Nome do Site, 2025"
 - ED_09: NUNCA remover ou substituir a palavra "cristão" no material.
+- ED_10: NUNCA usar a palavra "discuta"
+  ❌ "Discuta com seus colegas" → ✅ "Converse com seus colegas"
+  ❌ "Discuta o conceito" → ✅ "Elabore sobre o conceito"
+- ED_11: Negrito (bold) APENAS em palavras específicas (termos-chave, conceitos isolados)
+  NUNCA aplicar negrito em frases completas ou orações inteiras.
+  ❌ "**Observe as imagens a seguir e responda às perguntas:**" → ✅ sem negrito na frase
+  ✅ "O conceito de **fotossíntese** será trabalhado nesta atividade."
+- ED_12: NUNCA usar a palavra "aluno"
+  ❌ "O aluno deverá" → ✅ "O estudante deverá"
+- ED_13: Em enunciados de exercícios, NUNCA usar "abaixo" — usar sempre "a seguir"
+  ❌ "Leia o texto abaixo" → ✅ "Leia o texto a seguir"
+- ED_14: Persona por contexto — identificar SEMPRE o destinatário do trecho antes de corrigir:
+  - Texto direcionado ao ESTUDANTE (enunciados, atividades, textos didáticos): usar "você"
+    ❌ "Nós vamos fazer uma festa" → ✅ "Você fará uma festa"
+  - Orientações ao PROFESSOR (manual, roteiro): usar "o estudante", "o professor"
+    ✅ "O estudante deverá analisar..." (apenas em contexto de orientação docente)
+  - NUNCA usar "o estudante" em texto dirigido diretamente ao estudante
+- ED_15: Profundidade científica — ao corrigir ou reescrever explicações de conceitos disciplinares:
+  - Usar terminologia técnica oficial da área (morfema, radical, etimologia, fotossíntese, etc.)
+  - Garantir definição precisa com nomenclatura científica adequada ao ano escolar
+  - NUNCA simplificar ao ponto de perder precisão conceitual
+  - ❌ Explicação vaga ou metafórica sem embasamento técnico
+  - ✅ Definição com terminologia científica + contextualização curricular
+- ED_16: Neologismos superficiais — substituir linguagem informal, coloquial ou metafórica por linguagem científica e acadêmica:
+  - ❌ "Você já reparou que as palavras também têm parentes?"
+  - ✅ "No estudo da língua portuguesa, as palavras organizam-se em grupos morfológicos denominados famílias etimológicas, que compartilham o mesmo radical e origem histórica."
+  - Manter acessibilidade para a faixa etária, mas com linguagem técnica precisa
+  - Expressões como "como se fossem", "é tipo", "funciona igual a" devem ser substituídas por definições diretas
 
 IDENTIDADE CONFESSIONAL:
 - Preservar SEMPRE os termos teológicos: Deus, Criador, Cristão, cristão.
