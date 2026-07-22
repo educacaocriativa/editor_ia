@@ -558,4 +558,8 @@ def revisar_documento(
         "docx_relatorio": caminho_relatorio,
         "total_alteracoes": len(mudancas_unicas),
         "resumo": {e["tipo"]: _resumo_etapa(e) for e in etapas_concluidas},
+        # Lista completa das mudanças ({texto_original, texto_corrigido, tipo,
+        # explicacao}). Exposta para consumidores via API (ex.: api.py) sem
+        # precisar reabrir o .docx. Campo aditivo — não afeta a UI Gradio.
+        "mudancas_unicas": mudancas_unicas,
     }
