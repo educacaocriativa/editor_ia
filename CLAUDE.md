@@ -1,7 +1,8 @@
 # Editor IA — Diretrizes Permanentes de Edição
 
 > **IMPORTANTE:** Estas regras são obrigatórias em TODA revisão editorial.
-> Fonte completa: `dados/regrasdeouro.xlsx`
+> Fonte completa: `dados/regrasdeouro.xlsx` + Acordo Ortográfico da Língua
+> Portuguesa (Portal da Língua Portuguesa) para regras de itálico, hífen e acentuação.
 > Aplique ANTES de qualquer correção ortográfica, pedagógica ou de coesão.
 
 ---
@@ -49,6 +50,19 @@
   - ❌ `Nome do Site, de 2025`  → ✅ `Nome do Site, 2025`
 
 - **ED_09 — Identidade:** Nunca remover ou substituir a palavra "cristão" no material.
+
+- **ED_17 — Estrangeirismos (itálico):** Toda palavra ou expressão estrangeira (não
+  aportuguesada) que **não** seja nome próprio (pessoa, marca, lugar, instituição)
+  deve ser grafada em itálico. Nomes próprios estrangeiros nunca recebem itálico.
+  Fonte: Acordo Ortográfico da Língua Portuguesa, Base XIX, 2º, f (itálico retido em
+  título de periódico estrangeiro é o precedente formal; a regra geral de itálico
+  para estrangeirismos comuns é convenção editorial padrão — ABNT/uso corrente).
+  - ❌ `O mouse do computador travou.` → ✅ `O _mouse_ do computador travou.`
+  - ❌ `Ele fez um workshop de design.` → ✅ `Ele fez um _workshop_ de _design_.`
+  - ❌ `_Shakespeare_ escreveu Hamlet.` → ✅ `Shakespeare escreveu Hamlet.` (nome próprio, sem itálico)
+  - No Editor IA, o trecho a italizar é marcado com underline simples (`_palavra_`)
+    em `texto_corrigido`; o sistema converte isso em itálico real no `.docx`
+    (ver `word/track_changes.py`). Categoria de correção: `"estrangeirismo"`.
 
 ---
 

@@ -33,16 +33,20 @@ def _get_rpr(paragraph) -> Optional[etree._Element]:
 
 
 def _make_run(text: str, rpr=None, is_del: bool = False,
-              bold: bool = False) -> etree._Element:
-    """Cria um elemento <w:r> com texto, com suporte a negrito."""
+              bold: bool = False, italic: bool = False) -> etree._Element:
+    """Cria um elemento <w:r> com texto, com suporte a negrito e itálico."""
     r = etree.Element(_w("r"))
-    # Monta rPr com negrito se necessário
-    if bold or rpr is not None:
+    # Monta rPr com negrito/itálico se necessário
+    if bold or italic or rpr is not None:
         rpr_elem = deepcopy(rpr) if rpr is not None else etree.Element(_w("rPr"))
         if bold:
             # Insere <w:b/> e <w:bCs/> no rPr
             b = etree.SubElement(rpr_elem, _w("b"))
             bcs = etree.SubElement(rpr_elem, _w("bCs"))
+        if italic:
+            # Insere <w:i/> e <w:iCs/> no rPr (ED_17 — estrangeirismos)
+            i = etree.SubElement(rpr_elem, _w("i"))
+            ics = etree.SubElement(rpr_elem, _w("iCs"))
         r.append(rpr_elem)
     tag = _w("delText") if is_del else _w("t")
     t = etree.SubElement(r, tag)
@@ -53,40 +57,58 @@ def _make_run(text: str, rpr=None, is_del: bool = False,
 
 
 _BOLD_PATTERN = re.compile(r"\*\*(.+?)\*\*")
+_ITALIC_PATTERN = re.compile(r"_(.+?)_")
 
 
 def _segmentar_texto_bold(texto: str):
     """
-    Divide o texto em segmentos (texto, bold).
-    Detecta marcadores **palavra** e retorna lista de (trecho, is_bold).
+    Divide o texto em segmentos (texto, bold, italic).
+    Detecta marcadores **palavra** (negrito) e _palavra_ (itálico, ED_17)
+    e retorna lista de (trecho, is_bold, is_italic).
     """
     segmentos = []
     ultimo = 0
     for m in _BOLD_PATTERN.finditer(texto):
         antes = texto[ultimo:m.start()]
         if antes:
-            segmentos.append((antes, False))
-        segmentos.append((m.group(1), True))
+            segmentos.extend(_segmentar_texto_italico(antes))
+        segmentos.append((m.group(1), True, False))
         ultimo = m.end()
     resto = texto[ultimo:]
     if resto:
-        segmentos.append((resto, False))
-    return segmentos if segmentos else [(texto, False)]
+        segmentos.extend(_segmentar_texto_italico(resto))
+    return segmentos if segmentos else [(texto, False, False)]
+
+
+def _segmentar_texto_italico(texto: str):
+    """Divide um trecho sem negrito em segmentos (trecho, False, is_italic)."""
+    segmentos = []
+    ultimo = 0
+    for m in _ITALIC_PATTERN.finditer(texto):
+        antes = texto[ultimo:m.start()]
+        if antes:
+            segmentos.append((antes, False, False))
+        segmentos.append((m.group(1), False, True))
+        ultimo = m.end()
+    resto = texto[ultimo:]
+    if resto:
+        segmentos.append((resto, False, False))
+    return segmentos if segmentos else [(texto, False, False)]
 
 
 def _make_ins_bold(texto: str, author: str, date: str,
                    rev_id: int, rpr=None) -> etree._Element:
     """
-    Cria <w:ins> suportando **negrito** inline via marcadores **.
-    Cada segmento negritado vira um <w:r> separado com <w:b/>.
+    Cria <w:ins> suportando **negrito** e _itálico_ inline via marcadores.
+    Cada segmento formatado vira um <w:r> separado com <w:b/> e/ou <w:i/>.
     """
     el = etree.Element(_w("ins"))
     el.set(_w("id"), str(rev_id))
     el.set(_w("author"), author)
     el.set(_w("date"), date)
     segmentos = _segmentar_texto_bold(texto)
-    for trecho, is_bold in segmentos:
-        el.append(_make_run(trecho, rpr, is_del=False, bold=is_bold))
+    for trecho, is_bold, is_italic in segmentos:
+        el.append(_make_run(trecho, rpr, is_del=False, bold=is_bold, italic=is_italic))
     return el
 
 

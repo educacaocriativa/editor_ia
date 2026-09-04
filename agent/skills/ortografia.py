@@ -18,11 +18,14 @@ ESCOPO DESTA REVISÃO:
 - Pontuação incorreta (vírgula, ponto, dois-pontos, ponto-e-vírgula)
 - Uso inadequado de maiúsculas e minúsculas
 - Crase
+- Estrangeirismos sem itálico (ED_17): toda palavra ou expressão estrangeira que
+  não seja nome próprio deve ser marcada em itálico usando _palavra_ (underline
+  simples ao redor do trecho). Nomes próprios estrangeiros NUNCA recebem itálico.
 
 NÃO revisar nesta etapa: coesão, estilo, pedagogia, fatos.
 
 {SYSTEM_FORMATO_JSON}
-Categorias válidas para "tipo": "ortografia", "gramatica", "pontuacao", "crase"
+Categorias válidas para "tipo": "ortografia", "gramatica", "pontuacao", "crase", "estrangeirismo"
 """
 
 

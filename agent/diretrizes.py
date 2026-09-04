@@ -81,6 +81,14 @@ REGRAS ESPECÍFICAS DO EDITOR:
   - ✅ "No estudo da língua portuguesa, as palavras organizam-se em grupos morfológicos denominados famílias etimológicas, que compartilham o mesmo radical e origem histórica."
   - Manter acessibilidade para a faixa etária, mas com linguagem técnica precisa
   - Expressões como "como se fossem", "é tipo", "funciona igual a" devem ser substituídas por definições diretas
+- ED_17: Estrangeirismos — toda palavra ou expressão estrangeira (não aportuguesada)
+  que NÃO seja nome próprio (pessoa, marca, lugar, instituição) deve ser grafada em
+  itálico. Nomes próprios estrangeiros NUNCA recebem itálico.
+  Marque o trecho a italizar envolvendo-o com underline simples: _palavra_
+  ❌ "O mouse do computador" / "Ele fez um workshop sobre design"
+  ✅ "O _mouse_ do computador" / "Ele fez um _workshop_ sobre _design_"
+  ❌ (nome próprio) "_Shakespeare_ escreveu..." → ✅ "Shakespeare escreveu..." (sem itálico)
+  Use "tipo": "estrangeirismo" para esta correção.
 
 IDENTIDADE CONFESSIONAL:
 - Preservar SEMPRE os termos teológicos: Deus, Criador, Cristão, cristão.
