@@ -32,7 +32,29 @@ CORES_TIPO = {
     "factual":          RGBColor(0xC0, 0x39, 0x2B),   # vermelho forte
     "factual_incerto":  RGBColor(0xF3, 0x98, 0x12),   # amarelo-laranja
     "humanizacao":      RGBColor(0x21, 0x8C, 0x74),   # verde-azulado escuro
+    "estrangeirismo":   RGBColor(0x16, 0x85, 0x76),   # verde-azulado
+    "confessional":     RGBColor(0x0E, 0x3D, 0x52),   # azul escuro
+    "acessibilidade":   RGBColor(0x27, 0x6A, 0x9C),   # azul
+    "cruzamento_sem_base":              RGBColor(0x6C, 0x3A, 0x83),  # roxo
+    "cruzamento_gabarito_incoerente":   RGBColor(0x8E, 0x44, 0xAD),  # roxo médio
+    "cruzamento_gabarito_incompleto":   RGBColor(0xA5, 0x69, 0xBD),  # roxo claro
+    "cruzamento_atividade_mal_formulada": RGBColor(0x76, 0x44, 0x8A),  # roxo escuro
+    "pc_vocabulario":          RGBColor(0x1F, 0x61, 0x8D),  # azul escuro
+    "pc_clareza_algoritmica":  RGBColor(0x21, 0x8C, 0xBE),  # azul-ciano
+    "pc_adequacao_etaria":     RGBColor(0x29, 0x80, 0xB9),  # azul
+    "pc_codigo":               RGBColor(0x1A, 0x5C, 0x89),  # azul muito escuro
+    "pc_progressao":           RGBColor(0x26, 0x8B, 0xD2),  # azul claro
+    "pc_bncc_digital":         RGBColor(0x00, 0x5F, 0x73),  # azul-petróleo
 }
+
+_COR_FALLBACK = RGBColor(0x5D, 0x6D, 0x7E)  # cinza neutro — nunca preto puro
+
+
+def _cor_texto_contraste(cor: RGBColor) -> RGBColor:
+    """Retorna branco ou preto conforme a luminância do fundo, garantindo
+    legibilidade mesmo para tipos não cadastrados em CORES_TIPO."""
+    luminancia = 0.299 * cor[0] + 0.587 * cor[1] + 0.114 * cor[2]
+    return RGBColor(0xFF, 0xFF, 0xFF) if luminancia < 140 else RGBColor(0x00, 0x00, 0x00)
 
 NOMES_TIPO = {
     "ortografia": "Ortografia",
@@ -55,6 +77,19 @@ NOMES_TIPO = {
     "factual": "Erro Factual",
     "factual_incerto": "Fato Incerto (verificar)",
     "humanizacao": "Humanização",
+    "estrangeirismo": "Estrangeirismo (itálico)",
+    "confessional": "Confessional",
+    "acessibilidade": "Acessibilidade",
+    "cruzamento_sem_base": "Cruzamento — Atividade sem Base no Conteúdo",
+    "cruzamento_gabarito_incoerente": "Cruzamento — Gabarito Incoerente",
+    "cruzamento_gabarito_incompleto": "Cruzamento — Gabarito Incompleto",
+    "cruzamento_atividade_mal_formulada": "Cruzamento — Atividade Mal Formulada",
+    "pc_vocabulario": "Pensamento Computacional — Vocabulário",
+    "pc_clareza_algoritmica": "Pensamento Computacional — Clareza Algorítmica",
+    "pc_adequacao_etaria": "Pensamento Computacional — Adequação Etária",
+    "pc_codigo": "Pensamento Computacional — Código",
+    "pc_progressao": "Pensamento Computacional — Progressão",
+    "pc_bncc_digital": "Pensamento Computacional — BNCC Digital",
 }
 
 
@@ -398,8 +433,9 @@ def gerar_relatorio(
         por_tipo.setdefault(t, []).append(m)
 
     for tipo, mudancas in por_tipo.items():
-        cor = CORES_TIPO.get(tipo, RGBColor(0x00, 0x00, 0x00))
-        nome_tipo = NOMES_TIPO.get(tipo, tipo.title())
+        cor = CORES_TIPO.get(tipo, _COR_FALLBACK)
+        nome_tipo = NOMES_TIPO.get(tipo, tipo.replace("_", " ").title())
+        cor_texto_cabecalho = _cor_texto_contraste(cor)
 
         heading = doc.add_heading(f"{nome_tipo} ({len(mudancas)})", level=2)
         heading.runs[0].font.color.rgb = cor
@@ -411,7 +447,9 @@ def gerar_relatorio(
         cabecalhos = ["Original", "Corrigido", "Explicação"]
         for i, cab in enumerate(cabecalhos):
             cell = tabela.cell(0, i)
-            cell.paragraphs[0].add_run(cab).bold = True
+            run_cab = cell.paragraphs[0].add_run(cab)
+            run_cab.bold = True
+            run_cab.font.color.rgb = cor_texto_cabecalho
             _set_cell_bg(cell, f"{_cor_hex(cor)}")
 
         for m in mudancas:
