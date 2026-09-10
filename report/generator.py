@@ -45,6 +45,7 @@ CORES_TIPO = {
     "pc_codigo":               RGBColor(0x1A, 0x5C, 0x89),  # azul muito escuro
     "pc_progressao":           RGBColor(0x26, 0x8B, 0xD2),  # azul claro
     "pc_bncc_digital":         RGBColor(0x00, 0x5F, 0x73),  # azul-petróleo
+    "espaco_resposta_insuficiente": RGBColor(0xB9, 0x77, 0x0E),  # âmbar
 }
 
 _COR_FALLBACK = RGBColor(0x5D, 0x6D, 0x7E)  # cinza neutro — nunca preto puro
@@ -90,6 +91,7 @@ NOMES_TIPO = {
     "pc_codigo": "Pensamento Computacional — Código",
     "pc_progressao": "Pensamento Computacional — Progressão",
     "pc_bncc_digital": "Pensamento Computacional — BNCC Digital",
+    "espaco_resposta_insuficiente": "Espaço de Resposta Insuficiente",
 }
 
 

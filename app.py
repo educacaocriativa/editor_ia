@@ -67,6 +67,7 @@ def _revisar(
     fazer_cruzamento,
     fazer_cosmovisao,
     fazer_pc,
+    fazer_espaco_resposta,
     request: gr.Request = None,
     progress=gr.Progress(track_tqdm=True),
 ):
@@ -135,7 +136,9 @@ def _revisar(
                     fazer_cruzamento=fazer_cruzamento,
                     fazer_cosmovisao=fazer_cosmovisao,
                     fazer_pc=fazer_pc,
+                    fazer_espaco_resposta=fazer_espaco_resposta,
                     progress_callback=_cb,
+                    origem="gradio",
                 )
             except Exception as exc:
                 _rc["erro"] = f"{exc}\n{traceback.format_exc()}"
@@ -455,6 +458,14 @@ with gr.Blocks(title="Editor IA") as demo:
                             " vocabulário técnico, clareza algorítmica e BNCC digital"
                         ),
                     )
+                    fazer_espaco_resposta = gr.Checkbox(
+                        value=True,
+                        label=(
+                            "Espaço de Resposta —"
+                            " linhas em branco suficientes para a atividade"
+                            " (apenas .docx)"
+                        ),
+                    )
 
                     with gr.Row():
                         btn = gr.Button(
@@ -513,6 +524,7 @@ with gr.Blocks(title="Editor IA") as demo:
                     fazer_cruzamento,
                     fazer_cosmovisao,
                     fazer_pc,
+                    fazer_espaco_resposta,
                 ],
                 outputs=[saida_docx, saida_relatorio, log_box, status_docx, status_relatorio],
             )

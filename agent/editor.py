@@ -40,7 +40,9 @@ from word.bloom_reader import montar_contexto_bloom
 from agent.skills.cruzamento import cruzar_informacoes
 from agent.skills.humanidades_cristas import revisar_cosmovisao
 from agent.skills.pensamento_computacional import revisar_pensamento_computacional
+from agent.skills.espaco_resposta import verificar_espaco_resposta
 from agent.skills.base import set_log_callback
+from agent.fila_processamento import entrar_na_fila
 from report.generator import gerar_relatorio
 
 
@@ -60,10 +62,17 @@ def revisar_documento(
     fazer_cosmovisao: bool = True,
     fazer_cruzamento: bool = True,
     fazer_pc: bool = False,
+    fazer_espaco_resposta: bool = True,
     progress_callback: Optional[Callable[[str, float], None]] = None,
+    origem: str = "desconhecido",
 ) -> dict:
     """
     Pipeline completo de revisão editorial.
+
+    `origem` identifica o processo chamador ("gradio" ou "api") para a fila
+    global de processamento (ver agent/fila_processamento.py) — garante que
+    app.py e api.py nunca processem dois documentos ao mesmo tempo na
+    mesma instância.
 
     Retorna dict com:
       docx_revisado, docx_relatorio, total_alteracoes, resumo
@@ -77,489 +86,509 @@ def revisar_documento(
     # Registra log para mensagens de retry visíveis no frontend
     set_log_callback(lambda msg: progress_callback(msg, 0.0) if progress_callback else None)
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY não configurada.")
+    origem_str = origem if origem in ("gradio", "api") else "desconhecido"
+    with entrar_na_fila(origem=origem_str, log=lambda m: log(m, 0.0)):
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY não configurada.")
 
-    client = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.Anthropic(api_key=api_key)
 
-    # ── Carrega o perfil da faixa etária ─────────────────────────────────────
-    perfil = obter_perfil(faixa_etaria)
-    log(f"Perfil carregado: {perfil.nome}", 0.01)
+        # ── Carrega o perfil da faixa etária ─────────────────────────────────────
+        perfil = obter_perfil(faixa_etaria)
+        log(f"Perfil carregado: {perfil.nome}", 0.01)
 
-    # ── Carrega planilha BNCC ────────────────────────────────────────────────
-    banco_bncc = {}
-    if fazer_bncc:
-        bncc_path = caminho_planilha_bncc or obter_caminho_bncc()
-        if bncc_path:
-            log("Carregando planilha BNCC...", 0.02)
-            try:
-                banco_bncc = carregar_planilha_bncc(bncc_path)
-                log(f"  → {len(banco_bncc)} habilidades carregadas.", 0.03)
-            except Exception as e:
-                log(f"  ⚠ Erro ao carregar planilha BNCC: {e}", 0.03)
-        else:
-            log(
-                "  ℹ Planilha BNCC não configurada"
-                " (validação sem banco de referência).",
-                0.03,
-            )
-
-    # ── Carrega materiais de referência ──────────────────────────────────────
-    materiais = obter_materiais()
-    n_materiais = materiais.total()
-    comp = componente_curricular.strip()
-    if n_materiais:
-        comp_str = f" [{comp}]" if comp else ""
-        log(
-            f"Base de referência: {n_materiais} material(is)"
-            f" carregado(s){comp_str}.",
-            0.035,
-        )
-
-    # ── Carrega planilha Taxonomia de Bloom ──────────────────────────────
-    contexto_bloom = montar_contexto_bloom()
-    if contexto_bloom:
-        log("Taxonomia de Bloom carregada da planilha.", 0.038)
-
-    # ── Detecta tipo de arquivo ──────────────────────────────────────────────
-    is_pdf = os.path.splitext(caminho_docx)[1].lower() == ".pdf"
-
-    # ── Extrai conteúdo do documento ─────────────────────────────────────────
-    log("Extraindo conteúdo do documento...", 0.04)
-
-    if is_pdf:
-        texto_plano = extrair_texto_pdf(caminho_docx)
-        if not texto_plano.strip():
-            raise ValueError("O PDF está vazio ou sem texto legível.")
-        # Cria parágrafos virtuais a partir do texto do PDF
-        blocos = [b.strip() for b in texto_plano.split("\n\n") if b.strip()]
-        paragrafos = [
-            {"indice": i, "texto": t, "estilo": "Normal", "fonte": "pdf"}
-            for i, t in enumerate(blocos)
-        ]
-        texto_numerado = montar_texto_numerado(paragrafos)
-    else:
-        paragrafos = extrair_paragrafos(caminho_docx)
-        texto_numerado = montar_texto_numerado(paragrafos)
-        texto_plano = extrair_texto_plano(caminho_docx)
-
-    if not texto_plano.strip():
-        raise ValueError("O documento está vazio ou sem texto legível.")
-
-    todas_as_mudancas: List[dict] = []
-    etapas_concluidas = []
-
-    flags = [
-        fazer_ortografia, fazer_coesao, fazer_pedagogico,
-        fazer_fatos, fazer_humanizacao, fazer_bncc, fazer_bloom,
-        fazer_cosmovisao, fazer_cruzamento, fazer_pc,
-    ]
-    total_etapas = max(sum(flags), 1)
-    etapa_atual = 0
-
-    def pct(frac: float) -> float:
-        base = 0.05 + (etapa_atual / total_etapas) * 0.85
-        return base + frac * (0.85 / total_etapas)
-
-    # ── Ortografia e Gramática ───────────────────────────────────────────
-    if fazer_ortografia:
-        log("Revisando ortografia e gramática...", pct(0.1))
-        try:
-            m = revisar_ortografia(client, texto_numerado)
-            m = [x for x in m if isinstance(x, dict)]
-            todas_as_mudancas.extend(m)
-            etapas_concluidas.append(
-                {"tipo": "ortografia_gramatica", "total": len(m)}
-            )
-            log(f"  → {len(m)} correções encontradas.", pct(1.0))
-        except Exception as e:
-            log(f"  ⚠ Erro: {e}", pct(1.0))
-        etapa_atual += 1
-        time.sleep(_PAUSA_ENTRE_SKILLS)
-
-    # ── Coesão e Estilo ──────────────────────────────────────────────────
-    if fazer_coesao:
-        log("Revisando coesão e estilo...", pct(0.1))
-        try:
-            m = revisar_coesao_estilo(client, texto_numerado)
-            m = [x for x in m if isinstance(x, dict)]
-            todas_as_mudancas.extend(m)
-            etapas_concluidas.append(
-                {"tipo": "coesao_estilo", "total": len(m)}
-            )
-            log(f"  → {len(m)} ajustes encontrados.", pct(1.0))
-        except Exception as e:
-            log(f"  ⚠ Erro: {e}", pct(1.0))
-        etapa_atual += 1
-        time.sleep(_PAUSA_ENTRE_SKILLS)
-
-    # ── Revisão Pedagógica (com perfil específico) ──────────────────────
-    if fazer_pedagogico:
-        log(
-            f"Revisando adequação pedagógica"
-            f" [{perfil.nome}]...",
-            pct(0.1),
-        )
-        try:
-            ctx_ped = materiais.obter_exemplos_escrita(
-                perfil.chave, max_chars=2000, componente=comp
-            )
-            m = revisar_pedagogico(
-                client,
-                texto_numerado,
-                faixa_etaria,
-                plano_obras_texto,
-                perfil=perfil,
-                contexto_referencia=ctx_ped,
-            )
-            m = [x for x in m if isinstance(x, dict)]
-            todas_as_mudancas.extend(m)
-            etapas_concluidas.append(
-                {"tipo": "pedagogico", "total": len(m)}
-            )
-            log(f"  → {len(m)} ajustes pedagógicos encontrados.", pct(1.0))
-        except Exception as e:
-            log(f"  ⚠ Erro: {e}", pct(1.0))
-        etapa_atual += 1
-        time.sleep(_PAUSA_ENTRE_SKILLS)
-
-    # ── Verificação de Fatos (5×) ────────────────────────────────────────
-    if fazer_fatos:
-        log(
-            f"Verificando fatos ({VERIFICACOES_FATOS}×)..."
-            " (pode demorar alguns minutos)",
-            pct(0.1),
-        )
-        try:
-            m = verificar_fatos(client, texto_plano, VERIFICACOES_FATOS, faixa_etaria)
-            m = [x for x in m if isinstance(x, dict)]
-            fatos_reais = [x for x in m if x.get("tipo") == "factual"]
-            incertos = [x for x in m if x.get("tipo") == "factual_incerto"]
-            todas_as_mudancas.extend(fatos_reais)
-            etapas_concluidas.append({
-                "tipo": "verificacao_fatos",
-                "total": len(fatos_reais),
-                "incertos": len(incertos),
-                "detalhes": m,
-            })
-            log(
-                f"  → {len(fatos_reais)} erros factuais,"
-                f" {len(incertos)} incertos.",
-                pct(1.0),
-            )
-        except Exception as e:
-            log(f"  ⚠ Erro: {e}", pct(1.0))
-        etapa_atual += 1
-        time.sleep(_PAUSA_ENTRE_SKILLS)
-
-    # ── Humanização (com perfil específico) ─────────────────────────────
-    if fazer_humanizacao:
-        log("Humanizando a linguagem...", pct(0.1))
-        try:
-            ctx_hum = materiais.obter_exemplos_escrita(
-                perfil.chave, max_chars=2000, componente=comp
-            )
-            m = humanizar_texto(
-                client, texto_numerado, faixa_etaria,
-                perfil=perfil, contexto_referencia=ctx_hum,
-            )
-            m = [x for x in m if isinstance(x, dict)]
-            todas_as_mudancas.extend(m)
-            etapas_concluidas.append(
-                {"tipo": "humanizacao", "total": len(m)}
-            )
-            log(f"  → {len(m)} ajustes de humanização.", pct(1.0))
-        except Exception as e:
-            log(f"  ⚠ Erro: {e}", pct(1.0))
-        etapa_atual += 1
-        time.sleep(_PAUSA_ENTRE_SKILLS)
-
-    # ── Validação BNCC ───────────────────────────────────────────────────
-    if fazer_bncc:
-        log("Validando habilidades BNCC...", pct(0.1))
-        try:
-            m = validar_bncc_completo(
-                client,
-                texto_plano,
-                texto_numerado,
-                banco_bncc,
-                perfil.bncc_prefixos,
-            )
-            m = [x for x in m if isinstance(x, dict)]
-            # Apenas erros de escrita e desalinhamentos alteram o doc
-            m_doc = [
-                x for x in m
-                if x.get("tipo") in (
-                    "bncc_codigo_incorreto",
-                    "bncc_ano_incompativel",
-                    "bncc_componente_errado",
-                )
-            ]
-            # Alertas e sugestões vão apenas para o relatório
-            m_alertas = [x for x in m if x not in m_doc]
-            todas_as_mudancas.extend(m_doc)
-            etapas_concluidas.append({
-                "tipo": "bncc",
-                "total": len(m_doc),
-                "alertas": len(m_alertas),
-                "detalhes_bncc": m,
-            })
-            log(
-                f"  → {len(m_doc)} erros BNCC,"
-                f" {len(m_alertas)} alertas/sugestões.",
-                pct(1.0),
-            )
-        except Exception as e:
-            log(f"  ⚠ Erro: {e}", pct(1.0))
-        etapa_atual += 1
-        time.sleep(_PAUSA_ENTRE_SKILLS)
-
-    # ── Taxonomia de Bloom ──────────────────────────────────────────────
-    if fazer_bloom:
-        log("Classificando e corrigindo atividades (Bloom)...", pct(0.1))
-        try:
-            bloom_itens = avaliar_bloom(
-                client, texto_numerado, faixa_etaria,
-                perfil=perfil,
-                contexto_planilha=contexto_bloom,
-            )
-            bloom_itens = [x for x in bloom_itens if isinstance(x, dict)]
-            # Correções vão para o documento
-            bloom_correcoes = [
-                x for x in bloom_itens
-                if x.get("tipo") == "bloom_correcao"
-            ]
-            # Classificações vão apenas para o relatório
-            bloom_classificacoes = [
-                x for x in bloom_itens
-                if x.get("tipo") == "bloom_classificacao"
-            ]
-            todas_as_mudancas.extend(bloom_correcoes)
-            diagnostico = gerar_diagnostico_bloom(bloom_itens)
-
-            # Adaptar gabarito / orientações do professor para as atividades
-            # que foram reformuladas pelo Bloom
-            bloom_gabarito = []
-            if bloom_correcoes:
+        # ── Carrega planilha BNCC ────────────────────────────────────────────────
+        banco_bncc = {}
+        if fazer_bncc:
+            bncc_path = caminho_planilha_bncc or obter_caminho_bncc()
+            if bncc_path:
+                log("Carregando planilha BNCC...", 0.02)
                 try:
-                    log(
-                        "  → Atualizando gabarito para atividades reformuladas...",
-                        pct(0.5),
-                    )
-                    bloom_gabarito = adaptar_gabarito_bloom(
-                        client, bloom_correcoes, texto_numerado
-                    )
-                    bloom_gabarito = [
-                        x for x in bloom_gabarito if isinstance(x, dict)
-                    ]
-                    todas_as_mudancas.extend(bloom_gabarito)
-                except Exception as eg:
-                    log(f"  ⚠ Gabarito Bloom: {eg}", pct(0.5))
+                    banco_bncc = carregar_planilha_bncc(bncc_path)
+                    log(f"  → {len(banco_bncc)} habilidades carregadas.", 0.03)
+                except Exception as e:
+                    log(f"  ⚠ Erro ao carregar planilha BNCC: {e}", 0.03)
+            else:
+                log(
+                    "  ℹ Planilha BNCC não configurada"
+                    " (validação sem banco de referência).",
+                    0.03,
+                )
 
-            etapas_concluidas.append({
-                "tipo": "bloom",
-                "total": len(bloom_correcoes),
-                "total_classificacoes": len(bloom_classificacoes),
-                "total_gabarito": len(bloom_gabarito),
-                "classificacoes": bloom_classificacoes,
-                "diagnostico": diagnostico,
-                "_todos_itens": bloom_itens,
-                "_gabarito": bloom_gabarito,
-            })
+        # ── Carrega materiais de referência ──────────────────────────────────────
+        materiais = obter_materiais()
+        n_materiais = materiais.total()
+        comp = componente_curricular.strip()
+        if n_materiais:
+            comp_str = f" [{comp}]" if comp else ""
             log(
-                f"  → {len(bloom_classificacoes)} atividades classificadas,"
-                f" {len(bloom_correcoes)} correções propostas,"
-                f" {len(bloom_gabarito)} atualizações de gabarito.",
-                pct(1.0),
+                f"Base de referência: {n_materiais} material(is)"
+                f" carregado(s){comp_str}.",
+                0.035,
             )
-            if diagnostico.get("julgamento"):
-                log(f"  → Diagnóstico: {diagnostico['julgamento']}", pct(1.0))
-        except Exception as e:
-            log(f"  ⚠ Erro: {e}", pct(1.0))
-        etapa_atual += 1
-        time.sleep(_PAUSA_ENTRE_SKILLS)
 
-    # ── Cosmovisão Cristã ────────────────────────────────────────────────
-    if fazer_cosmovisao:
-        log("Verificando cosmovisão cristã e contraponto evangélico...", pct(0.1))
-        try:
-            m = revisar_cosmovisao(
-                client, texto_numerado, faixa_etaria, perfil=perfil
-            )
-            m = [x for x in m if isinstance(x, dict)]
-            qualificadores = [x for x in m if x.get("tipo") == "cosmovisao_qualificador"]
-            # Limite rígido de 3 boxes por arquivo
-            boxes = [x for x in m if x.get("tipo") == "cosmovisao_boxe"][:3]
-            todas_as_mudancas.extend(qualificadores)
-            todas_as_mudancas.extend(boxes)
-            etapas_concluidas.append({
-                "tipo": "cosmovisao",
-                "total": len(qualificadores),
-                "total_boxes": len(boxes),
-            })
+        # ── Carrega planilha Taxonomia de Bloom ──────────────────────────────
+        contexto_bloom = montar_contexto_bloom()
+        if contexto_bloom:
+            log("Taxonomia de Bloom carregada da planilha.", 0.038)
+
+        # ── Detecta tipo de arquivo ──────────────────────────────────────────────
+        is_pdf = os.path.splitext(caminho_docx)[1].lower() == ".pdf"
+
+        # ── Extrai conteúdo do documento ─────────────────────────────────────────
+        log("Extraindo conteúdo do documento...", 0.04)
+
+        if is_pdf:
+            texto_plano = extrair_texto_pdf(caminho_docx)
+            if not texto_plano.strip():
+                raise ValueError("O PDF está vazio ou sem texto legível.")
+            # Cria parágrafos virtuais a partir do texto do PDF
+            blocos = [b.strip() for b in texto_plano.split("\n\n") if b.strip()]
+            paragrafos = [
+                {"indice": i, "texto": t, "estilo": "Normal", "fonte": "pdf"}
+                for i, t in enumerate(blocos)
+            ]
+            texto_numerado = montar_texto_numerado(paragrafos)
+        else:
+            paragrafos = extrair_paragrafos(caminho_docx)
+            texto_numerado = montar_texto_numerado(paragrafos)
+            texto_plano = extrair_texto_plano(caminho_docx)
+
+        if not texto_plano.strip():
+            raise ValueError("O documento está vazio ou sem texto legível.")
+
+        todas_as_mudancas: List[dict] = []
+        etapas_concluidas = []
+
+        flags = [
+            fazer_ortografia, fazer_coesao, fazer_pedagogico,
+            fazer_fatos, fazer_humanizacao, fazer_bncc, fazer_bloom,
+            fazer_cosmovisao, fazer_cruzamento, fazer_pc, fazer_espaco_resposta,
+        ]
+        total_etapas = max(sum(flags), 1)
+        etapa_atual = 0
+
+        def pct(frac: float) -> float:
+            base = 0.05 + (etapa_atual / total_etapas) * 0.85
+            return base + frac * (0.85 / total_etapas)
+
+        # ── Ortografia e Gramática ───────────────────────────────────────────
+        if fazer_ortografia:
+            log("Revisando ortografia e gramática...", pct(0.1))
+            try:
+                m = revisar_ortografia(client, texto_numerado)
+                m = [x for x in m if isinstance(x, dict)]
+                todas_as_mudancas.extend(m)
+                etapas_concluidas.append(
+                    {"tipo": "ortografia_gramatica", "total": len(m)}
+                )
+                log(f"  → {len(m)} correções encontradas.", pct(1.0))
+            except Exception as e:
+                log(f"  ⚠ Erro: {e}", pct(1.0))
+            etapa_atual += 1
+            time.sleep(_PAUSA_ENTRE_SKILLS)
+
+        # ── Coesão e Estilo ──────────────────────────────────────────────────
+        if fazer_coesao:
+            log("Revisando coesão e estilo...", pct(0.1))
+            try:
+                m = revisar_coesao_estilo(client, texto_numerado)
+                m = [x for x in m if isinstance(x, dict)]
+                todas_as_mudancas.extend(m)
+                etapas_concluidas.append(
+                    {"tipo": "coesao_estilo", "total": len(m)}
+                )
+                log(f"  → {len(m)} ajustes encontrados.", pct(1.0))
+            except Exception as e:
+                log(f"  ⚠ Erro: {e}", pct(1.0))
+            etapa_atual += 1
+            time.sleep(_PAUSA_ENTRE_SKILLS)
+
+        # ── Revisão Pedagógica (com perfil específico) ──────────────────────
+        if fazer_pedagogico:
             log(
-                f"  → {len(qualificadores)} qualificadores,"
-                f" {len(boxes)} Boxes Confissão de Fé.",
-                pct(1.0),
+                f"Revisando adequação pedagógica"
+                f" [{perfil.nome}]...",
+                pct(0.1),
             )
-        except Exception as e:
-            log(f"  ⚠ Erro: {e}", pct(1.0))
-        etapa_atual += 1
-        time.sleep(_PAUSA_ENTRE_SKILLS)
+            try:
+                ctx_ped = materiais.obter_exemplos_escrita(
+                    perfil.chave, max_chars=2000, componente=comp
+                )
+                m = revisar_pedagogico(
+                    client,
+                    texto_numerado,
+                    faixa_etaria,
+                    plano_obras_texto,
+                    perfil=perfil,
+                    contexto_referencia=ctx_ped,
+                )
+                m = [x for x in m if isinstance(x, dict)]
+                todas_as_mudancas.extend(m)
+                etapas_concluidas.append(
+                    {"tipo": "pedagogico", "total": len(m)}
+                )
+                log(f"  → {len(m)} ajustes pedagógicos encontrados.", pct(1.0))
+            except Exception as e:
+                log(f"  ⚠ Erro: {e}", pct(1.0))
+            etapa_atual += 1
+            time.sleep(_PAUSA_ENTRE_SKILLS)
 
-    # ── Cruzamento de informações ────────────────────────────────────────
-    if fazer_cruzamento:
-        log("Cruzando conteúdo, atividades e gabarito...", pct(0.1))
-        try:
-            m = cruzar_informacoes(
-                client, texto_numerado, faixa_etaria, perfil=perfil
+        # ── Verificação de Fatos (5×) ────────────────────────────────────────
+        if fazer_fatos:
+            log(
+                f"Verificando fatos ({VERIFICACOES_FATOS}×)..."
+                " (pode demorar alguns minutos)",
+                pct(0.1),
             )
-            m = [x for x in m if isinstance(x, dict)]
-            todas_as_mudancas.extend(m)
-            etapas_concluidas.append(
-                {"tipo": "cruzamento", "total": len(m)}
+            try:
+                m = verificar_fatos(client, texto_plano, VERIFICACOES_FATOS, faixa_etaria)
+                m = [x for x in m if isinstance(x, dict)]
+                fatos_reais = [x for x in m if x.get("tipo") == "factual"]
+                incertos = [x for x in m if x.get("tipo") == "factual_incerto"]
+                todas_as_mudancas.extend(fatos_reais)
+                etapas_concluidas.append({
+                    "tipo": "verificacao_fatos",
+                    "total": len(fatos_reais),
+                    "incertos": len(incertos),
+                    "detalhes": m,
+                })
+                log(
+                    f"  → {len(fatos_reais)} erros factuais,"
+                    f" {len(incertos)} incertos.",
+                    pct(1.0),
+                )
+            except Exception as e:
+                log(f"  ⚠ Erro: {e}", pct(1.0))
+            etapa_atual += 1
+            time.sleep(_PAUSA_ENTRE_SKILLS)
+
+        # ── Humanização (com perfil específico) ─────────────────────────────
+        if fazer_humanizacao:
+            log("Humanizando a linguagem...", pct(0.1))
+            try:
+                ctx_hum = materiais.obter_exemplos_escrita(
+                    perfil.chave, max_chars=2000, componente=comp
+                )
+                m = humanizar_texto(
+                    client, texto_numerado, faixa_etaria,
+                    perfil=perfil, contexto_referencia=ctx_hum,
+                )
+                m = [x for x in m if isinstance(x, dict)]
+                todas_as_mudancas.extend(m)
+                etapas_concluidas.append(
+                    {"tipo": "humanizacao", "total": len(m)}
+                )
+                log(f"  → {len(m)} ajustes de humanização.", pct(1.0))
+            except Exception as e:
+                log(f"  ⚠ Erro: {e}", pct(1.0))
+            etapa_atual += 1
+            time.sleep(_PAUSA_ENTRE_SKILLS)
+
+        # ── Validação BNCC ───────────────────────────────────────────────────
+        if fazer_bncc:
+            log("Validando habilidades BNCC...", pct(0.1))
+            try:
+                m = validar_bncc_completo(
+                    client,
+                    texto_plano,
+                    texto_numerado,
+                    banco_bncc,
+                    perfil.bncc_prefixos,
+                )
+                m = [x for x in m if isinstance(x, dict)]
+                # Apenas erros de escrita e desalinhamentos alteram o doc
+                m_doc = [
+                    x for x in m
+                    if x.get("tipo") in (
+                        "bncc_codigo_incorreto",
+                        "bncc_ano_incompativel",
+                        "bncc_componente_errado",
+                    )
+                ]
+                # Alertas e sugestões vão apenas para o relatório
+                m_alertas = [x for x in m if x not in m_doc]
+                todas_as_mudancas.extend(m_doc)
+                etapas_concluidas.append({
+                    "tipo": "bncc",
+                    "total": len(m_doc),
+                    "alertas": len(m_alertas),
+                    "detalhes_bncc": m,
+                })
+                log(
+                    f"  → {len(m_doc)} erros BNCC,"
+                    f" {len(m_alertas)} alertas/sugestões.",
+                    pct(1.0),
+                )
+            except Exception as e:
+                log(f"  ⚠ Erro: {e}", pct(1.0))
+            etapa_atual += 1
+            time.sleep(_PAUSA_ENTRE_SKILLS)
+
+        # ── Taxonomia de Bloom ──────────────────────────────────────────────
+        if fazer_bloom:
+            log("Classificando e corrigindo atividades (Bloom)...", pct(0.1))
+            try:
+                bloom_itens = avaliar_bloom(
+                    client, texto_numerado, faixa_etaria,
+                    perfil=perfil,
+                    contexto_planilha=contexto_bloom,
+                )
+                bloom_itens = [x for x in bloom_itens if isinstance(x, dict)]
+                # Correções vão para o documento
+                bloom_correcoes = [
+                    x for x in bloom_itens
+                    if x.get("tipo") == "bloom_correcao"
+                ]
+                # Classificações vão apenas para o relatório
+                bloom_classificacoes = [
+                    x for x in bloom_itens
+                    if x.get("tipo") == "bloom_classificacao"
+                ]
+                todas_as_mudancas.extend(bloom_correcoes)
+                diagnostico = gerar_diagnostico_bloom(bloom_itens)
+
+                # Adaptar gabarito / orientações do professor para as atividades
+                # que foram reformuladas pelo Bloom
+                bloom_gabarito = []
+                if bloom_correcoes:
+                    try:
+                        log(
+                            "  → Atualizando gabarito para atividades reformuladas...",
+                            pct(0.5),
+                        )
+                        bloom_gabarito = adaptar_gabarito_bloom(
+                            client, bloom_correcoes, texto_numerado
+                        )
+                        bloom_gabarito = [
+                            x for x in bloom_gabarito if isinstance(x, dict)
+                        ]
+                        todas_as_mudancas.extend(bloom_gabarito)
+                    except Exception as eg:
+                        log(f"  ⚠ Gabarito Bloom: {eg}", pct(0.5))
+
+                etapas_concluidas.append({
+                    "tipo": "bloom",
+                    "total": len(bloom_correcoes),
+                    "total_classificacoes": len(bloom_classificacoes),
+                    "total_gabarito": len(bloom_gabarito),
+                    "classificacoes": bloom_classificacoes,
+                    "diagnostico": diagnostico,
+                    "_todos_itens": bloom_itens,
+                    "_gabarito": bloom_gabarito,
+                })
+                log(
+                    f"  → {len(bloom_classificacoes)} atividades classificadas,"
+                    f" {len(bloom_correcoes)} correções propostas,"
+                    f" {len(bloom_gabarito)} atualizações de gabarito.",
+                    pct(1.0),
+                )
+                if diagnostico.get("julgamento"):
+                    log(f"  → Diagnóstico: {diagnostico['julgamento']}", pct(1.0))
+            except Exception as e:
+                log(f"  ⚠ Erro: {e}", pct(1.0))
+            etapa_atual += 1
+            time.sleep(_PAUSA_ENTRE_SKILLS)
+
+        # ── Cosmovisão Cristã ────────────────────────────────────────────────
+        if fazer_cosmovisao:
+            log("Verificando cosmovisão cristã e contraponto evangélico...", pct(0.1))
+            try:
+                m = revisar_cosmovisao(
+                    client, texto_numerado, faixa_etaria, perfil=perfil
+                )
+                m = [x for x in m if isinstance(x, dict)]
+                qualificadores = [x for x in m if x.get("tipo") == "cosmovisao_qualificador"]
+                # Limite rígido de 3 boxes por arquivo
+                boxes = [x for x in m if x.get("tipo") == "cosmovisao_boxe"][:3]
+                todas_as_mudancas.extend(qualificadores)
+                todas_as_mudancas.extend(boxes)
+                etapas_concluidas.append({
+                    "tipo": "cosmovisao",
+                    "total": len(qualificadores),
+                    "total_boxes": len(boxes),
+                })
+                log(
+                    f"  → {len(qualificadores)} qualificadores,"
+                    f" {len(boxes)} Boxes Confissão de Fé.",
+                    pct(1.0),
+                )
+            except Exception as e:
+                log(f"  ⚠ Erro: {e}", pct(1.0))
+            etapa_atual += 1
+            time.sleep(_PAUSA_ENTRE_SKILLS)
+
+        # ── Cruzamento de informações ────────────────────────────────────────
+        if fazer_cruzamento:
+            log("Cruzando conteúdo, atividades e gabarito...", pct(0.1))
+            try:
+                m = cruzar_informacoes(
+                    client, texto_numerado, faixa_etaria, perfil=perfil
+                )
+                m = [x for x in m if isinstance(x, dict)]
+                todas_as_mudancas.extend(m)
+                etapas_concluidas.append(
+                    {"tipo": "cruzamento", "total": len(m)}
+                )
+                log(f"  → {len(m)} inconsistências encontradas.", pct(1.0))
+            except Exception as e:
+                log(f"  ⚠ Erro: {e}", pct(1.0))
+            etapa_atual += 1
+
+        # ── Pensamento Computacional ─────────────────────────────────────────
+        if fazer_pc:
+            log("Revisando Pensamento Computacional...", pct(0.1))
+            try:
+                m = revisar_pensamento_computacional(
+                    client, texto_numerado, faixa_etaria, perfil=perfil
+                )
+                m = [x for x in m if isinstance(x, dict)]
+                todas_as_mudancas.extend(m)
+                etapas_concluidas.append(
+                    {"tipo": "pensamento_computacional", "total": len(m)}
+                )
+                log(f"  → {len(m)} ajustes de Pensamento Computacional.", pct(1.0))
+            except Exception as e:
+                log(f"  ⚠ Erro: {e}", pct(1.0))
+            etapa_atual += 1
+            time.sleep(_PAUSA_ENTRE_SKILLS)
+
+        # ── Espaço de Resposta (apenas .docx — alerta, não edita o documento) ──
+        if fazer_espaco_resposta and not is_pdf:
+            log("Verificando espaço de resposta das atividades...", pct(0.1))
+            try:
+                m = verificar_espaco_resposta(
+                    client, texto_numerado, faixa_etaria, perfil=perfil
+                )
+                m = [x for x in m if isinstance(x, dict)]
+                todas_as_mudancas.extend(m)
+                etapas_concluidas.append(
+                    {"tipo": "espaco_resposta", "total": len(m)}
+                )
+                log(f"  → {len(m)} espaço(s) de resposta insuficiente(s).", pct(1.0))
+            except Exception as e:
+                log(f"  ⚠ Erro: {e}", pct(1.0))
+            etapa_atual += 1
+            time.sleep(_PAUSA_ENTRE_SKILLS)
+
+        # ── Sanitiza bold indevido (ED_11): remove ** que envolvem frase inteira ─
+        def _sanitizar_bold(texto: str) -> str:
+            t = texto.strip()
+            if t.startswith("**") and t.endswith("**") and t.count("**") == 2:
+                return t[2:-2]
+            return texto
+
+        for m in todas_as_mudancas:
+            if "texto_corrigido" in m:
+                m["texto_corrigido"] = _sanitizar_bold(m["texto_corrigido"])
+
+        # ── Deduplica mudanças ───────────────────────────────────────────────
+        # Reescritas do Bloom (e atualizações de gabarito) usam chave própria
+        # para não serem descartadas quando uma skill anterior já propôs
+        # mudança no mesmo enunciado da atividade.
+        _TIPOS_BLOOM_PROTEGIDOS = {"bloom_correcao", "bloom_gabarito"}
+        vistos: set = set()
+        mudancas_unicas = []
+        for m in todas_as_mudancas:
+            orig = m.get("texto_original", "")
+            if not orig:
+                continue
+            tipo = m.get("tipo", "")
+            chave = (orig, tipo) if tipo in _TIPOS_BLOOM_PROTEGIDOS else orig
+            if chave not in vistos:
+                vistos.add(chave)
+                mudancas_unicas.append(m)
+
+        tmp_dir = tempfile.mkdtemp()
+        nome_base = os.path.splitext(os.path.basename(caminho_docx))[0]
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        if is_pdf:
+            # ── Anota o PDF original com comentários ─────────────────────────
+            log("Inserindo comentários no PDF...", 0.91)
+            from word.pdf_annotations import anotar_pdf
+            caminho_revisado = os.path.join(
+                tmp_dir, f"{nome_base}_REVISADO_{ts}.pdf"
             )
-            log(f"  → {len(m)} inconsistências encontradas.", pct(1.0))
-        except Exception as e:
-            log(f"  ⚠ Erro: {e}", pct(1.0))
-        etapa_atual += 1
+            try:
+                n_anot = anotar_pdf(caminho_docx, caminho_revisado, mudancas_unicas)
+                log(f"  {n_anot}/{len(mudancas_unicas)} anotações inseridas no PDF.", 0.93)
+            except Exception as e:
+                log(f"  ⚠ Erro ao anotar PDF: {e}", 0.93)
+                import shutil
+                shutil.copy2(caminho_docx, caminho_revisado)
+        else:
+            # ── Aplica controle de alterações no Word ────────────────────────
+            log("Aplicando controle de alterações no Word...", 0.91)
+            doc_revisado = docx.Document(caminho_docx)
 
-    # ── Pensamento Computacional ─────────────────────────────────────────
-    if fazer_pc:
-        log("Revisando Pensamento Computacional...", pct(0.1))
-        try:
-            m = revisar_pensamento_computacional(
-                client, texto_numerado, faixa_etaria, perfil=perfil
+            def _extrair_texto_xml(doc):
+                W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                partes = []
+                for elem in doc.element.body.iter(f"{{{W}}}t"):
+                    if elem.text:
+                        partes.append(elem.text)
+                return " ".join(partes)
+
+            texto_doc_completo = _extrair_texto_xml(doc_revisado)
+            encontradas = [
+                m for m in mudancas_unicas
+                if m.get("texto_original", "") in texto_doc_completo
+            ]
+            nao_encontradas = [
+                m for m in mudancas_unicas
+                if m.get("texto_original", "") not in texto_doc_completo
+            ]
+            log(
+                f"  {len(encontradas)}/{len(mudancas_unicas)} mudanças"
+                f" localizadas no documento.",
+                0.93,
             )
-            m = [x for x in m if isinstance(x, dict)]
-            todas_as_mudancas.extend(m)
-            etapas_concluidas.append(
-                {"tipo": "pensamento_computacional", "total": len(m)}
+            for m in nao_encontradas[:5]:
+                orig = m.get("texto_original", "")[:70]
+                log(f"  ✗ Texto não encontrado: '{orig}'", 0.93)
+
+            aplicar_todas_as_mudancas(
+                doc_revisado, mudancas_unicas, author=AUTOR_REVISAO
             )
-            log(f"  → {len(m)} ajustes de Pensamento Computacional.", pct(1.0))
-        except Exception as e:
-            log(f"  ⚠ Erro: {e}", pct(1.0))
-        etapa_atual += 1
-        time.sleep(_PAUSA_ENTRE_SKILLS)
+            caminho_revisado = os.path.join(
+                tmp_dir, f"{nome_base}_REVISADO_{ts}.docx"
+            )
+            doc_revisado.save(caminho_revisado)
 
-    # ── Sanitiza bold indevido (ED_11): remove ** que envolvem frase inteira ─
-    def _sanitizar_bold(texto: str) -> str:
-        t = texto.strip()
-        if t.startswith("**") and t.endswith("**") and t.count("**") == 2:
-            return t[2:-2]
-        return texto
-
-    for m in todas_as_mudancas:
-        if "texto_corrigido" in m:
-            m["texto_corrigido"] = _sanitizar_bold(m["texto_corrigido"])
-
-    # ── Deduplica mudanças ───────────────────────────────────────────────
-    # Reescritas do Bloom (e atualizações de gabarito) usam chave própria
-    # para não serem descartadas quando uma skill anterior já propôs
-    # mudança no mesmo enunciado da atividade.
-    _TIPOS_BLOOM_PROTEGIDOS = {"bloom_correcao", "bloom_gabarito"}
-    vistos: set = set()
-    mudancas_unicas = []
-    for m in todas_as_mudancas:
-        orig = m.get("texto_original", "")
-        if not orig:
-            continue
-        tipo = m.get("tipo", "")
-        chave = (orig, tipo) if tipo in _TIPOS_BLOOM_PROTEGIDOS else orig
-        if chave not in vistos:
-            vistos.add(chave)
-            mudancas_unicas.append(m)
-
-    tmp_dir = tempfile.mkdtemp()
-    nome_base = os.path.splitext(os.path.basename(caminho_docx))[0]
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    if is_pdf:
-        # ── Anota o PDF original com comentários ─────────────────────────
-        log("Inserindo comentários no PDF...", 0.91)
-        from word.pdf_annotations import anotar_pdf
-        caminho_revisado = os.path.join(
-            tmp_dir, f"{nome_base}_REVISADO_{ts}.pdf"
+        # ── Gera relatório ───────────────────────────────────────────────────
+        log("Gerando relatório de revisão...", 0.95)
+        caminho_relatorio = os.path.join(
+            tmp_dir, f"{nome_base}_RELATORIO_{ts}.docx"
         )
-        try:
-            n_anot = anotar_pdf(caminho_docx, caminho_revisado, mudancas_unicas)
-            log(f"  {n_anot}/{len(mudancas_unicas)} anotações inseridas no PDF.", 0.93)
-        except Exception as e:
-            log(f"  ⚠ Erro ao anotar PDF: {e}", 0.93)
-            import shutil
-            shutil.copy2(caminho_docx, caminho_revisado)
-    else:
-        # ── Aplica controle de alterações no Word ────────────────────────
-        log("Aplicando controle de alterações no Word...", 0.91)
-        doc_revisado = docx.Document(caminho_docx)
-
-        def _extrair_texto_xml(doc):
-            W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-            partes = []
-            for elem in doc.element.body.iter(f"{{{W}}}t"):
-                if elem.text:
-                    partes.append(elem.text)
-            return " ".join(partes)
-
-        texto_doc_completo = _extrair_texto_xml(doc_revisado)
-        encontradas = [
-            m for m in mudancas_unicas
-            if m.get("texto_original", "") in texto_doc_completo
-        ]
-        nao_encontradas = [
-            m for m in mudancas_unicas
-            if m.get("texto_original", "") not in texto_doc_completo
-        ]
-        log(
-            f"  {len(encontradas)}/{len(mudancas_unicas)} mudanças"
-            f" localizadas no documento.",
-            0.93,
+        gerar_relatorio(
+            caminho_saida=caminho_relatorio,
+            nome_documento=os.path.basename(caminho_docx),
+            faixa_etaria=faixa_etaria,
+            perfil_nome=perfil.nome,
+            todas_as_mudancas=mudancas_unicas,
+            etapas=etapas_concluidas,
         )
-        for m in nao_encontradas[:5]:
-            orig = m.get("texto_original", "")[:70]
-            log(f"  ✗ Texto não encontrado: '{orig}'", 0.93)
 
-        aplicar_todas_as_mudancas(
-            doc_revisado, mudancas_unicas, author=AUTOR_REVISAO
-        )
-        caminho_revisado = os.path.join(
-            tmp_dir, f"{nome_base}_REVISADO_{ts}.docx"
-        )
-        doc_revisado.save(caminho_revisado)
+        log("Revisão concluída com sucesso!", 1.0)
 
-    # ── Gera relatório ───────────────────────────────────────────────────
-    log("Gerando relatório de revisão...", 0.95)
-    caminho_relatorio = os.path.join(
-        tmp_dir, f"{nome_base}_RELATORIO_{ts}.docx"
-    )
-    gerar_relatorio(
-        caminho_saida=caminho_relatorio,
-        nome_documento=os.path.basename(caminho_docx),
-        faixa_etaria=faixa_etaria,
-        perfil_nome=perfil.nome,
-        todas_as_mudancas=mudancas_unicas,
-        etapas=etapas_concluidas,
-    )
+        def _resumo_etapa(e: dict) -> str:
+            if e["tipo"] == "bloom":
+                return (
+                    f"{e.get('total_classificacoes', 0)} atividade(s) classificada(s), "
+                    f"{e.get('total', 0)} correção(ões), "
+                    f"{e.get('total_gabarito', 0)} gabarito(s)"
+                )
+            return str(e.get("total", 0))
 
-    log("Revisão concluída com sucesso!", 1.0)
-
-    def _resumo_etapa(e: dict) -> str:
-        if e["tipo"] == "bloom":
-            return (
-                f"{e.get('total_classificacoes', 0)} atividade(s) classificada(s), "
-                f"{e.get('total', 0)} correção(ões), "
-                f"{e.get('total_gabarito', 0)} gabarito(s)"
-            )
-        return str(e.get("total", 0))
-
-    return {
-        "docx_revisado": caminho_revisado,
-        "docx_relatorio": caminho_relatorio,
-        "total_alteracoes": len(mudancas_unicas),
-        "resumo": {e["tipo"]: _resumo_etapa(e) for e in etapas_concluidas},
-        # Lista completa das mudanças ({texto_original, texto_corrigido, tipo,
-        # explicacao}). Exposta para consumidores via API (ex.: api.py) sem
-        # precisar reabrir o .docx. Campo aditivo — não afeta a UI Gradio.
-        "mudancas_unicas": mudancas_unicas,
-    }
+        return {
+            "docx_revisado": caminho_revisado,
+            "docx_relatorio": caminho_relatorio,
+            "total_alteracoes": len(mudancas_unicas),
+            "resumo": {e["tipo"]: _resumo_etapa(e) for e in etapas_concluidas},
+            # Lista completa das mudanças ({texto_original, texto_corrigido, tipo,
+            # explicacao}). Exposta para consumidores via API (ex.: api.py) sem
+            # precisar reabrir o .docx. Campo aditivo — não afeta a UI Gradio.
+            "mudancas_unicas": mudancas_unicas,
+        }

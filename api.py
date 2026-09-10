@@ -8,7 +8,7 @@ app publicado. Reaproveita todo o pipeline de `agent.editor.revisar_documento`
 bases curadas fica disponível para a autoria sem duplicar nada.
 
 Execução:
-    pip install flask
+    pip install flask waitress
     set EDITOR_IA_API_TOKEN=<token compartilhado>   (Windows)
     export EDITOR_IA_API_TOKEN=<token compartilhado> (Linux)
     python api.py            # sobe em 0.0.0.0:7870
@@ -152,7 +152,10 @@ def revisao_prova():
             fazer_cruzamento=False,
             fazer_pc=False,
             progress_callback=_cb,
+            origem="api",
         )
+    except TimeoutError as exc:
+        return jsonify({"error": f"Fila de processamento cheia: {exc}"}), 503
     except Exception as exc:  # noqa: BLE001 — devolve erro tratado pra autoria
         return jsonify({"error": f"Falha na revisao: {exc}"}), 502
     finally:
@@ -177,4 +180,9 @@ def revisao_prova():
 
 if __name__ == "__main__":
     print(f"[editor-ia-api] porta {API_PORT} · auth {'ON' if API_TOKEN else 'OFF'}")
-    app.run(host="0.0.0.0", port=API_PORT)
+    # waitress: servidor WSGI de produção (o servidor de desenvolvimento do
+    # Flask não aguenta conexões concorrentes). As threads extras só ficam
+    # bloqueadas aguardando a vez na fila global (agent/fila_processamento.py)
+    # — não chamam a API da Anthropic em paralelo.
+    from waitress import serve
+    serve(app, host="0.0.0.0", port=API_PORT, threads=8)
